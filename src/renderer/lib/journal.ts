@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timerHotkey: 'Control+Alt+P',
   timerFinishHotkey: 'Control+Alt+O',
   timerSound: true,
+  dayMatchesOpen: true,
 };
 
 /** Settings keys from older versions that no longer exist. */

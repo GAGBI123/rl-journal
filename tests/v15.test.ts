@@ -170,3 +170,13 @@ describe('adding a routine to a day counts what was already logged', () => {
     expect(dr.items.every((i) => i.prior === undefined && !i.done)).toBe(true);
   });
 });
+
+describe('day page settings', () => {
+  it('opens the tracked matches card by default, also for older files', () => {
+    const old: any = createDefaultData();
+    delete old.settings.dayMatchesOpen;
+    expect(normalizeData(JSON.parse(JSON.stringify(old))).settings.dayMatchesOpen).toBe(true);
+    old.settings.dayMatchesOpen = false;
+    expect(normalizeData(JSON.parse(JSON.stringify(old))).settings.dayMatchesOpen).toBe(false);
+  });
+});

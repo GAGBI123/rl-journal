@@ -2422,3 +2422,42 @@ textarea.input.desc {
     box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.25);
   }
 }
+
+/* ---- 1.5: tracked matches card on the day page opens and closes ---- */
+.matches-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.matches-card.open .matches-head {
+  margin-bottom: 10px;
+}
+
+.matches-head-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.matches-head .chev {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.matches-head:hover .chev {
+  color: var(--text);
+}
+
+.matches-card.open .matches-head .chev {
+  transform: rotate(180deg);
+}

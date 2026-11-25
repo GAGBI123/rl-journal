@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, ListChecks, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, ListChecks, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
 import { useStore } from '../store';
 import { activityById, dayNumber, findSeason, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
 import { formatLongDate, todayISO } from '../lib/dates';
@@ -81,7 +81,11 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
     setNoteDraft(null);
   };
 
-  const matchesToday = data.matches.filter((m) => m.dayId === day.id);
+  // Newest first.
+  const matchesToday = data.matches.filter((m) => m.dayId === day.id).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const matchesOpen = data.settings.dayMatchesOpen;
+  const matchWins = matchesToday.filter((m) => m.result === 'win').length;
+  const matchLosses = matchesToday.filter((m) => m.result === 'loss').length;
 
   return (
     <div className="page">
@@ -238,46 +242,62 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
           )}
 
           {matchesToday.length > 0 && (
-            <div className="card" style={{ marginTop: 8 }}>
-              <div className="row" style={{ marginBottom: 10, gap: 8 }}>
+            <div className={`card matches-card ${matchesOpen ? 'open' : ''}`} style={{ marginTop: 8 }}>
+              <button
+                className="matches-head"
+                aria-expanded={matchesOpen}
+                title={matchesOpen ? 'Hide the matches' : 'Show the matches'}
+                onClick={() => mutate((d) => void (d.settings.dayMatchesOpen = !matchesOpen))}
+              >
                 <Gamepad2 size={16} />
                 <b>Tracked matches</b>
-                <span className="muted small">from the live game connection</span>
-              </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Mode</th>
-                    {showRecord && <th>Result</th>}
-                    {showRecord && <th>Score</th>}
-                    <th>G / A / S / Sh</th>
-                    <th>Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matchesToday.map((m) => (
-                    <tr key={m.id}>
-                      <td>{activityById(data, m.activityId)?.name ?? m.mode}</td>
-                      {showRecord && (
-                      <td className={m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}>
-                        {m.result === 'win' ? (
-                          <span className="row" style={{ gap: 4 }}>
-                            <Trophy size={13} /> Win
-                          </span>
-                        ) : m.result === 'loss' ? (
-                          m.leftEarly ? 'Left early' : 'Loss'
-                        ) : (
-                          'Unknown'
-                        )}
-                      </td>
-                      )}
-                      {showRecord && <td>{m.teamScore !== undefined ? `${m.teamScore} – ${m.opponentScore ?? 0}${m.overtime ? ' OT' : ''}` : '—'}</td>}
-                      <td>{m.me ? `${m.me.goals} / ${m.me.assists} / ${m.me.saves} / ${m.me.shots}` : '—'}</td>
-                      <td className="muted">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <span className="muted small">· {matchesToday.length}</span>
+                {matchesOpen && <span className="muted small">from the live game connection</span>}
+                <span className="matches-head-end">
+                  {showRecord && matchWins + matchLosses > 0 && (
+                    <span className="small">
+                      <span className="up">{matchWins}W</span> <span className="muted">–</span> <span className="down">{matchLosses}L</span>
+                    </span>
+                  )}
+                  <ChevronDown size={16} className="chev" />
+                </span>
+              </button>
+              {matchesOpen && (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Mode</th>
+                      {showRecord && <th>Result</th>}
+                      {showRecord && <th>Score</th>}
+                      <th>G / A / S / Sh</th>
+                      <th>Time</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {matchesToday.map((m) => (
+                      <tr key={m.id}>
+                        <td>{activityById(data, m.activityId)?.name ?? m.mode}</td>
+                        {showRecord && (
+                        <td className={m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}>
+                          {m.result === 'win' ? (
+                            <span className="row" style={{ gap: 4 }}>
+                              <Trophy size={13} /> Win
+                            </span>
+                          ) : m.result === 'loss' ? (
+                            m.leftEarly ? 'Left early' : 'Loss'
+                          ) : (
+                            'Unknown'
+                          )}
+                        </td>
+                        )}
+                        {showRecord && <td>{m.teamScore !== undefined ? `${m.teamScore} – ${m.opponentScore ?? 0}${m.overtime ? ' OT' : ''}` : '—'}</td>}
+                        <td>{m.me ? `${m.me.goals} / ${m.me.assists} / ${m.me.saves} / ${m.me.shots}` : '—'}</td>
+                        <td className="muted">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           )}
 

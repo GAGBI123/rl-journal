@@ -221,6 +221,8 @@ export interface Settings {
   timerFinishHotkey: string;
   /** Play a short sound when a timer finishes. */
   timerSound: boolean;
+  /** Day page: the tracked matches card is open (remembered when the user opens or closes it). */
+  dayMatchesOpen: boolean;
   /** Players seen in the last live match, used for "that's me" linking. */
   lastMatchPlayers?: LocalPlayer[];
   /** The player last seen controlling the game on this PC. */
