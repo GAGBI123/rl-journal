@@ -101,10 +101,10 @@ export interface DayRoutineItem extends RoutineItem {
   /** Count added to the day when an 'amount' item was completed (taken off again when it's unticked). */
   loggedAmount?: number;
   /**
-   * Already logged on the day before the routine was added (minutes, or a count for 'amount' items).
-   * It counts towards the item but wasn't added by the routine, so unticking never takes it off the day.
+   * Only count what the routine logs for this item, not other work logged that day (set when the
+   * user unticks an item that work logged outside the routine covered).
    */
-  prior?: number;
+  separate?: boolean;
 }
 
 /** A routine started on a day. Items are copied so later edits to the routine don't change past days. */

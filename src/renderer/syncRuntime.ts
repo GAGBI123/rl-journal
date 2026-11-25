@@ -11,8 +11,9 @@ import {
   findDayRoutine,
   findSeason,
   itemKind,
-  itemTarget,
+  fmtItemValue,
   nextRoutineItem,
+  routineItemState,
   seasonLabel,
 } from './lib/journal';
 import { startRoutineItemTimer, type RoutineItemRef } from './lib/routineTimer';
@@ -93,8 +94,13 @@ export function startSyncRuntime() {
 }
 
 /** Log a finished timer to the day it was started on. */
+/** Timers already logged (by id), so a completion delivered twice never adds its time twice. */
+const loggedTimers = new Set<string>();
+
 export function logTimer(c: TimerCompletion) {
   const { mutate, toast, data } = useStore.getState();
+  if (loggedTimers.has(c.timer.id)) return;
+  loggedTimers.add(c.timer.id);
   let where = '';
   let target: { seasonId: string; dayId: string } | null = null;
   let next: RoutineItemRef | null = null;
@@ -115,18 +121,20 @@ export function logTimer(c: TimerCompletion) {
     // A routine item: tick it off (that also logs the time) and line up the next one.
     const dr = t.routine ? findDayRoutine(day, t.routine.dayRoutineId) : undefined;
     const item = dr?.items.find((i) => i.id === t.routine!.itemId);
-    if (dr && item && !item.done) {
-      completeRoutineItem(day, dr.id, item.id, c.minutes, t.note);
-      const n = nextRoutineItem(dr);
+    // completeRoutineItem logs the time itself; if the item is already done (e.g. logged meanwhile
+    // outside the routine), the time is logged as a plain entry instead. Never both.
+    if (dr && item && completeRoutineItem(day, dr.id, item.id, c.minutes, t.note)) {
+      const n = nextRoutineItem(day, dr);
       if (!n) routineDone = dr.name;
       else if (dr.autoNext) {
         const name = activityById(d, n.activityId)?.name ?? 'next item';
         const kind = itemKind(n);
         // An amount has no timer: it waits to be ticked off.
-        if (kind === 'amount') nextManual = `${itemTarget(n)}× ${name}`;
+        const left = routineItemState(day, n.id).remaining;
+        if (kind === 'amount') nextManual = `${fmtItemValue(n, left)} ${name}`;
         else {
           next = { seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId: n.id };
-          nextLabel = kind === 'stopwatch' ? `${name} (stopwatch)` : `${name} (${fmtMinutes(n.minutes)})`;
+          nextLabel = kind === 'stopwatch' ? `${name} (stopwatch)` : `${name} (${fmtMinutes(left)})`;
         }
       }
     } else {

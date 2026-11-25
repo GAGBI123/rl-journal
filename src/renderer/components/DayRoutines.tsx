@@ -10,12 +10,11 @@ import {
   fmtItemPlan,
   fmtItemValue,
   itemKind,
-  itemProgress,
-  itemRemaining,
   itemTarget,
   nextRoutineItem,
   removeDayRoutine,
   routineLengthLabel,
+  routineItemStates,
   routineProgress,
   sectionById,
   sectionLabel,
@@ -28,6 +27,7 @@ import { confirmDialog, Modal, NumberInput } from './ui';
 import { displayMs, fmtClock, isRunning } from '../../shared/timer';
 import { useTick } from './TimerPill';
 import type { Day, DayRoutine, DayRoutineItem, Season } from '../../shared/model';
+import type { RoutineItemState } from '../lib/journal';
 
 function useDayMutate(seasonId: string, dayId: string) {
   const mutate = useStore((s) => s.mutate);
@@ -50,12 +50,12 @@ export function DayRoutines({ season, day }: { season: Season; day: Day }) {
 }
 
 /** "10m", "12m / 10m" (did more, or partly done), "50×", "Stopwatch". */
-function ItemValue({ item }: { item: DayRoutineItem }) {
+function ItemValue({ item, st }: { item: DayRoutineItem; st: RoutineItemState }) {
   const target = itemTarget(item);
-  const progress = itemProgress(item);
+  const progress = st.progress;
   if (target === undefined) {
     if (progress > 0) return <>{fmtMinutes(progress)}</>;
-    return <span className="muted">{item.done ? '—' : 'Stopwatch'}</span>;
+    return <span className="muted">{st.done ? '—' : 'Stopwatch'}</span>;
   }
   if (progress > 0 && progress !== target) {
     return (
@@ -67,11 +67,11 @@ function ItemValue({ item }: { item: DayRoutineItem }) {
   return <>{fmtItemValue(item, target)}</>;
 }
 
-function tickTitle(item: DayRoutineItem) {
-  if (item.done) return item.prior ? 'Untick (what you logged before the routine stays on the day)' : 'Untick (takes what it added off the day again)';
+function tickTitle(item: DayRoutineItem, st: RoutineItemState) {
+  if (st.done) return st.outside ? 'Untick (what you logged outside the routine stays on the day)' : 'Untick (takes what it added off the day again)';
   const kind = itemKind(item);
   if (kind === 'stopwatch') return 'Tick off without adding time (use the stopwatch to time it)';
-  return `Tick off: adds ${fmtItemValue(item, itemRemaining(item))} to the day`;
+  return `Tick off: adds the ${fmtItemValue(item, st.remaining)} still missing to the day`;
 }
 
 function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: DayRoutine }) {
@@ -80,8 +80,10 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
   const toast = useStore((s) => s.toast);
   const mutateDay = useDayMutate(season.id, day.id);
   const [logging, setLogging] = useState<{ itemId: string; value: string } | null>(null);
-  const p = routineProgress(dr);
-  const next = nextRoutineItem(dr);
+  const states = routineItemStates(day);
+  const stateOf = (id: string): RoutineItemState => states.get(id) ?? { progress: 0, done: false, remaining: 0, outside: 0 };
+  const p = routineProgress(day, dr);
+  const next = nextRoutineItem(day, dr);
   const runningHere = timer?.routine?.dayRoutineId === dr.id ? timer : null;
   useTick(!!runningHere);
   const ref = (itemId: string) => ({ seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId });
@@ -166,11 +168,12 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
           const sec = act ? sectionById(data, act.sectionId) : undefined;
           const live = runningHere?.routine?.itemId === item.id ? runningHere : null;
           const kind = itemKind(item);
-          const isLogging = logging?.itemId === item.id && !item.done;
+          const st = stateOf(item.id);
+          const isLogging = logging?.itemId === item.id && !st.done;
           return (
-            <div key={item.id} className={`routine-item ${item.done ? 'done' : ''} ${live ? 'live' : ''}`} style={{ ['--e-color' as any]: sec?.color }}>
-              <button className={`check ${item.done ? 'on' : ''}`} onClick={() => toggleItem(item.id, item.done)} title={tickTitle(item)} aria-label={item.done ? 'Untick' : 'Tick off'}>
-                {item.done && <Check size={13} />}
+            <div key={item.id} className={`routine-item ${st.done ? 'done' : ''} ${live ? 'live' : ''}`} style={{ ['--e-color' as any]: sec?.color }}>
+              <button className={`check ${st.done ? 'on' : ''}`} onClick={() => toggleItem(item.id, st.done)} title={tickTitle(item, st)} aria-label={st.done ? 'Untick' : 'Tick off'}>
+                {st.done && <Check size={13} />}
               </button>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ri-name">
@@ -179,7 +182,7 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
                 <div className="tiny muted ellipsis">
                   {act ? sectionLabel(data, act.sectionId) : ''}
                   {item.note ? ` · ${item.note}` : ''}
-                  {item.prior ? <span className="ri-prior"> · {fmtItemValue(item, item.prior)} logged earlier today</span> : null}
+                  {st.outside ? <span className="ri-prior"> · {fmtItemValue(item, st.outside)} logged outside the routine</span> : null}
                 </div>
               </div>
               {isLogging ? (
@@ -193,9 +196,9 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
                   </button>
                 </div>
               ) : (
-                <div className="ri-time">{live ? <span className="live-clock">{fmtClock(displayMs(live))}</span> : <ItemValue item={item} />}</div>
+                <div className="ri-time">{live ? <span className="live-clock">{fmtClock(displayMs(live))}</span> : <ItemValue item={item} st={st} />}</div>
               )}
-              {!item.done &&
+              {!st.done &&
                 (live ? (
                   <button className="icon-btn" title={isRunning(live) ? 'Pause' : 'Resume'} onClick={() => window.rlj.timerControl('toggle')}>
                     {isRunning(live) ? <Pause size={15} /> : <Play size={15} />}
@@ -205,7 +208,7 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
                     className={`icon-btn ${isLogging ? 'on-toggle' : ''}`}
                     title="Log how many you actually did"
                     aria-label="Log a different amount"
-                    onClick={() => setLogging(isLogging ? null : { itemId: item.id, value: String(itemRemaining(item) || '') })}
+                    onClick={() => setLogging(isLogging ? null : { itemId: item.id, value: String(st.remaining || '') })}
                   >
                     <PenLine size={15} />
                   </button>
@@ -214,7 +217,7 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
                     <Watch size={15} />
                   </button>
                 ) : (
-                  <button className="icon-btn" title={`Start a ${fmtMinutes(itemRemaining(item))} timer for this`} aria-label="Start timer" onClick={() => startRoutineItemTimer(ref(item.id))}>
+                  <button className="icon-btn" title={`Start a ${fmtMinutes(st.remaining)} timer for this`} aria-label="Start timer" onClick={() => startRoutineItemTimer(ref(item.id))}>
                     <Timer size={15} />
                   </button>
                 ))}
@@ -230,15 +233,15 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
         >
           {nextKind === 'amount' ? (
             <>
-              <Check size={15} /> Done: {fmtItemValue(next, itemRemaining(next))} {nextAct?.name ?? 'next item'}
+              <Check size={15} /> Done: {fmtItemValue(next, stateOf(next.id).remaining)} {nextAct?.name ?? 'next item'}
             </>
           ) : nextKind === 'stopwatch' ? (
             <>
-              <Watch size={15} /> {p.done || next.prior ? 'Continue' : 'Start'}: {nextAct?.name ?? 'next item'} · stopwatch
+              <Watch size={15} /> {p.done || stateOf(next.id).progress ? 'Continue' : 'Start'}: {nextAct?.name ?? 'next item'} · stopwatch
             </>
           ) : (
             <>
-              <Play size={15} /> {p.done || next.prior ? 'Continue' : 'Start'}: {nextAct?.name ?? 'next item'} · {fmtMinutes(itemRemaining(next))}
+              <Play size={15} /> {p.done || stateOf(next.id).progress ? 'Continue' : 'Start'}: {nextAct?.name ?? 'next item'} · {fmtMinutes(stateOf(next.id).remaining)}
             </>
           )}
         </button>

@@ -62,7 +62,7 @@ Your journal is never replaced, not by updates and not by running the installer 
 - Save a **routine**: a list of trainings, each with a time, an amount or a stopwatch, e.g. *Freeplay 10 min, 50 shots in a training pack, Kickoffs with a stopwatch* (**Routines** in the sidebar).
 - Start it on any day: it shows as a checklist. Tick items off, or press **Start** to run their timers. With **Auto-next** on, the next item's timer starts by itself when one ends, so you can stay in game.
 - Each completed item adds its time or amount to the day like any other entry.
-- Anything you already logged that day counts: items you already did are ticked off when you add the routine, partly done ones show what's left, and if you did more, the item shows what you really did.
+- Whatever you log that day for an item's activity counts towards it, before or after you add the routine: items you already did are ticked off, partly done ones show what's left, and if you did more, the item shows what you really did. Ticking an item only adds what's still missing, so nothing is counted twice.
 
 ### Training timer and in-game overlay
 - **Timer:** pick what you're training, enter how long, and click **Timer**. When the time is up it's added to the day by itself, with your description.

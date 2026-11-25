@@ -83,7 +83,7 @@ describe('routines', () => {
     addToDay(day, { activityId: aerials.id, measure: 'time', minutes: 5 });
     const dr = startRoutineOnDay(day, routine);
     expect(dr.items.map((i) => i.id)).not.toEqual(routine.items.map((i) => i.id));
-    expect(nextRoutineItem(dr)?.activityId).toBe('act-freeplay');
+    expect(nextRoutineItem(day, dr)?.activityId).toBe('act-freeplay');
 
     expect(completeRoutineItem(day, dr.id, dr.items[0].id)).toBe(true);
     expect(completeRoutineItem(day, dr.id, dr.items[0].id)).toBe(false); // already done
@@ -92,15 +92,15 @@ describe('routines', () => {
     expect(day.entries.find((e) => e.activityId === 'act-freeplay')).toMatchObject({ minutes: 10 });
     expect(day.entries.find((e) => e.activityId === aerials.id)).toMatchObject({ minutes: 17, note: 'fast aerials' });
     // 1.5: the 5 min of Aerials logged before the routine was added count towards it (5 + 12).
-    expect(routineProgress(dr)).toMatchObject({ done: 2, total: 2, minutesDone: 27, minutesTotal: 25, complete: true });
-    expect(nextRoutineItem(dr)).toBeUndefined();
+    expect(routineProgress(day, dr)).toMatchObject({ done: 2, total: 2, minutesDone: 27, minutesTotal: 25, complete: true });
+    expect(nextRoutineItem(day, dr)).toBeUndefined();
 
     // Unticking takes exactly its time off again; an entry that drops to 0 goes away.
     undoRoutineItem(day, dr.id, dr.items[1].id);
     expect(day.entries.find((e) => e.activityId === aerials.id)).toMatchObject({ minutes: 5 });
     undoRoutineItem(day, dr.id, dr.items[0].id);
     expect(day.entries.find((e) => e.activityId === 'act-freeplay')).toBeUndefined();
-    expect(routineProgress(dr).done).toBe(0);
+    expect(routineProgress(day, dr).done).toBe(0);
 
     // Editing the saved routine doesn't change the day's copy.
     routine.items[0].minutes = 99;

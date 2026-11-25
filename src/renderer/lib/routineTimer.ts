@@ -1,6 +1,6 @@
 // Starts the timer for an item of a routine that was started on a day.
 import { useStore } from '../store';
-import { activityById, findDayRoutine, findSeason, fmtItemPlan, itemKind, itemRemaining, nextRoutineItem, sectionById } from './journal';
+import { activityById, findDayRoutine, findSeason, fmtItemValue, itemKind, nextRoutineItem, routineItemState, routineItemStates, sectionById } from './journal';
 import { plural } from './format';
 import { confirmDialog } from '../components/ui';
 
@@ -45,7 +45,7 @@ export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Pr
     seasonId: ref.seasonId,
     dayId: ref.dayId,
     date: day.date,
-    durationMs: kind === 'stopwatch' ? 0 : Math.round((itemRemaining(item) || item.minutes) * 60_000),
+    durationMs: kind === 'stopwatch' ? 0 : Math.round((routineItemState(day, item.id).remaining || item.minutes) * 60_000),
     note: item.note,
     mode: kind === 'stopwatch' ? 'up' : 'down',
     routine: { dayRoutineId: dr.id, itemId: item.id },
@@ -61,12 +61,13 @@ export async function afterRoutineAdded(ref: Omit<RoutineItemRef, 'itemId'>, run
   const { data, toast } = useStore.getState();
   const day = findSeason(data, ref.seasonId)?.days.find((d) => d.id === ref.dayId);
   const dr = day ? findDayRoutine(day, ref.dayRoutineId) : undefined;
-  if (!dr) return;
-  const done = dr.items.filter((i) => i.done).length;
-  const partly = dr.items.filter((i) => !i.done && i.prior).length;
+  if (!day || !dr) return;
+  const states = routineItemStates(day);
+  const done = dr.items.filter((i) => states.get(i.id)?.done).length;
+  const partly = dr.items.filter((i) => !states.get(i.id)?.done && states.get(i.id)?.progress).length;
   const parts = [done && `${plural(done, 'item')} done`, partly && `${plural(partly, 'item')} partly done`].filter(Boolean);
   const already = parts.length ? `What you already logged today counts: ${parts.join(', ')}.` : '';
-  const next = nextRoutineItem(dr);
+  const next = nextRoutineItem(day, dr);
   if (!next) {
     toast({ kind: 'success', title: `${dr.name}: already done today`, body: 'Everything in it was already logged today, so it is ticked off.' });
     return;
@@ -77,6 +78,6 @@ export async function afterRoutineAdded(ref: Omit<RoutineItemRef, 'itemId'>, run
     if (started && already) toast({ kind: 'info', title: `${dr.name} started`, body: already });
     return;
   }
-  const hint = runNow ? `First up: ${fmtItemPlan(next)} ${name}. Tick it off when you're done.` : 'Tick items off as you go, or press Start to run their timers.';
+  const hint = runNow ? `First up: ${fmtItemValue(next, states.get(next.id)?.remaining ?? 0)} ${name}. Tick it off when you're done.` : 'Tick items off as you go, or press Start to run their timers.';
   toast({ kind: 'success', title: `${dr.name} added to the day`, body: already ? `${already} ${hint}` : hint });
 }
