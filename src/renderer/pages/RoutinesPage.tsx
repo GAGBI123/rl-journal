@@ -1,4 +1,4 @@
-// Training routines: saved lists of trainings with a time each, started on a day and ticked off.
+// Training routines: saved lists of trainings (a time, an amount or a stopwatch each), started on a day and ticked off.
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Copy, ListChecks, Pencil, Play, Plus, Trash2, X } from 'lucide-react';
 import { useStore } from '../store';
@@ -9,24 +9,31 @@ import {
   dayForDate,
   findOrCreateActivity,
   findSeason,
-  routineMinutes,
+  fmtItemPlan,
+  itemKind,
+  routineLengthLabel,
   sectionActivities,
   sectionLabel,
   sectionById,
   sortedSections,
   startRoutineOnDay,
+  tidyItem,
 } from '../lib/journal';
-import { fmtMinutes, uid } from '../lib/format';
+import { uid } from '../lib/format';
 import { todayISO } from '../lib/dates';
-import { startRoutineItemTimer } from '../lib/routineTimer';
-import type { Routine } from '../../shared/model';
+import { afterRoutineAdded } from '../lib/routineTimer';
+import type { Routine, RoutineItem, RoutineItemKind } from '../../shared/model';
 
 const NEW = '__new__';
 
 interface DraftItem {
   key: string;
   activityId: string;
-  minutes: string;
+  kind: RoutineItemKind;
+  /** Minutes for a 'time' item, the count for an 'amount' item (unused for a stopwatch). */
+  value: string;
+  /** The user picked the kind themselves (picking an activity no longer changes it). */
+  kindTouched?: boolean;
   note: string;
   /** For a new activity typed in the editor. */
   newName?: string;
@@ -47,16 +54,13 @@ export function RoutinesPage() {
       return;
     }
     let dayRoutineId = '';
-    let firstId = '';
     mutate((d) => {
       const day = findSeason(d, today.season.id)?.days.find((x) => x.id === today.day.id);
       if (!day) return;
-      const dr = startRoutineOnDay(day, r);
-      dayRoutineId = dr.id;
-      firstId = dr.items[0]?.id ?? '';
+      dayRoutineId = startRoutineOnDay(day, r).id;
     });
     navigate({ name: 'day', seasonId: today.season.id, dayId: today.day.id });
-    if (runNow && firstId) await startRoutineItemTimer({ seasonId: today.season.id, dayId: today.day.id, dayRoutineId, itemId: firstId });
+    if (dayRoutineId) await afterRoutineAdded({ seasonId: today.season.id, dayId: today.day.id, dayRoutineId }, runNow);
   };
 
   const remove = async (r: Routine) => {
@@ -71,7 +75,7 @@ export function RoutinesPage() {
 
   const duplicate = (r: Routine) =>
     mutate((d) => {
-      createRoutine(d, `${r.name} (copy)`, r.items.map(({ activityId, minutes, note }) => ({ activityId, minutes, note })));
+      createRoutine(d, `${r.name} (copy)`, r.items.map(({ activityId, kind, minutes, amount, note }) => ({ activityId, kind, minutes, amount, note })));
     });
 
   return (
@@ -79,7 +83,7 @@ export function RoutinesPage() {
       <div className="page-header">
         <div>
           <h1>Routines</h1>
-          <div className="subtitle">Save the trainings you do and for how long. Start a routine on any day and just work through the list.</div>
+          <div className="subtitle">Save the trainings you do: for how long, how many, or timed with a stopwatch. Start a routine on any day and just work through the list.</div>
         </div>
         <div className="actions">
           <button className="btn primary" onClick={() => setEditing('new')}>
@@ -92,7 +96,7 @@ export function RoutinesPage() {
         <EmptyState
           icon={<ListChecks size={30} />}
           title="No routines yet"
-          body="For example a warm-up: Freeplay 10 min, Aerials 15 min, Kickoffs 5 min. Each item can run its own timer, one after another."
+          body="For example a warm-up: Freeplay 10 min, 50 shots in a training pack, Kickoffs with a stopwatch. Timed items run their own timer, one after another."
           action={
             <button className="btn primary" onClick={() => setEditing('new')}>
               <Plus size={15} /> Create a routine
@@ -118,7 +122,8 @@ export function RoutinesPage() {
                 </div>
               </div>
               <div className="muted small" style={{ marginBottom: 10 }}>
-                {r.items.length} item{r.items.length === 1 ? '' : 's'} · {fmtMinutes(routineMinutes(r.items))} total
+                {r.items.length} item{r.items.length === 1 ? '' : 's'}
+                {routineLengthLabel(r.items) ? ` · ${routineLengthLabel(r.items)}` : ''}
               </div>
               <div className="routine-list">
                 {r.items.map((i, n) => {
@@ -132,7 +137,7 @@ export function RoutinesPage() {
                         {a?.name ?? 'Deleted activity'}
                         {i.note && <span className="muted"> · {i.note}</span>}
                       </span>
-                      <b>{fmtMinutes(i.minutes)}</b>
+                      <b className={itemKind(i) === 'stopwatch' ? 'muted' : undefined}>{fmtItemPlan(i)}</b>
                     </div>
                   );
                 })}
@@ -155,22 +160,49 @@ export function RoutinesPage() {
   );
 }
 
+const KIND_OPTIONS: { value: RoutineItemKind; label: string; title: string }[] = [
+  { value: 'time', label: 'minutes', title: 'A set time, with a countdown timer' },
+  { value: 'amount', label: 'amount', title: 'How many, e.g. 50 shots' },
+  { value: 'stopwatch', label: 'stopwatch', title: "No set time: you time it with a stopwatch and stop when you're done" },
+];
+
 function RoutineEditor({ routine, onClose }: { routine?: Routine; onClose: () => void }) {
   const data = useStore((s) => s.data);
   const mutate = useStore((s) => s.mutate);
   const toast = useStore((s) => s.toast);
-  // Training-type sections (not Games: games are counted, not timed).
+  // Training-type sections (not Games: games are logged by the live game connection).
   const sections = sortedSections(data).filter((s) => s.kind !== 'games');
   const firstActivity = sections.map((s) => sectionActivities(data, s.id)[0]).find(Boolean);
-  const blank = (): DraftItem => ({ key: uid(), activityId: firstActivity?.id ?? NEW, minutes: '', note: '', newSectionId: sections[0]?.id });
+  const kindFor = (activityId: string): RoutineItemKind => (activityById(data, activityId)?.defaultMeasure === 'amount' ? 'amount' : 'time');
+  const blank = (): DraftItem => ({
+    key: uid(),
+    activityId: firstActivity?.id ?? NEW,
+    kind: firstActivity ? kindFor(firstActivity.id) : 'time',
+    value: '',
+    note: '',
+    newSectionId: sections[0]?.id,
+  });
   const [name, setName] = useState(routine?.name ?? '');
   const [items, setItems] = useState<DraftItem[]>(
     routine?.items.length
-      ? routine.items.map((i) => ({ key: i.id, activityId: i.activityId, minutes: String(i.minutes), note: i.note ?? '', newSectionId: sections[0]?.id }))
+      ? routine.items.map((i) => {
+          const kind = itemKind(i);
+          return {
+            key: i.id,
+            activityId: i.activityId,
+            kind,
+            kindTouched: true,
+            value: kind === 'time' ? String(i.minutes) : kind === 'amount' ? String(i.amount ?? '') : '',
+            note: i.note ?? '',
+            newSectionId: sections[0]?.id,
+          };
+        })
       : [blank()],
   );
 
   const update = (key: string, patch: Partial<DraftItem>) => setItems((list) => list.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+  const pickActivity = (i: DraftItem, activityId: string) =>
+    update(i.key, { activityId, ...(!i.kindTouched && activityId !== NEW && i.kind !== 'stopwatch' ? { kind: kindFor(activityId) } : {}) });
   const move = (idx: number, dir: -1 | 1) =>
     setItems((list) => {
       const next = [...list];
@@ -179,41 +211,56 @@ function RoutineEditor({ routine, onClose }: { routine?: Routine; onClose: () =>
       return next;
     });
 
-  const itemOk = (i: DraftItem) => Number(i.minutes) > 0 && (i.activityId !== NEW ? !!i.activityId : !!i.newName?.trim() && !!i.newSectionId);
-  const filled = items.filter((i) => i.minutes !== '' || i.activityId === NEW);
+  const itemOk = (i: DraftItem) =>
+    (i.kind === 'stopwatch' || Number(i.value) > 0) && (i.activityId !== NEW ? !!i.activityId : !!i.newName?.trim() && !!i.newSectionId);
+  const filled = items.filter((i) => i.value !== '' || i.activityId === NEW || i.kind === 'stopwatch');
   const valid = name.trim().length > 0 && filled.length > 0 && filled.every(itemOk);
-  const total = items.reduce((a, i) => a + (Number(i.minutes) > 0 ? Number(i.minutes) : 0), 0);
+  const asItem = (i: DraftItem, activityId: string): Omit<RoutineItem, 'id'> => ({
+    activityId,
+    kind: i.kind,
+    minutes: i.kind === 'time' ? Math.round(Number(i.value) * 100) / 100 : 0,
+    amount: i.kind === 'amount' ? Math.round(Number(i.value) * 100) / 100 : undefined,
+    note: i.note.trim() || undefined,
+  });
+  const length = routineLengthLabel(filled.filter(itemOk).map((i) => ({ ...asItem(i, i.activityId), id: i.key })));
 
   const save = () => {
     if (!valid) return;
     mutate((d) => {
-      const list = filled.map((i) => {
-        const activityId = i.activityId === NEW ? findOrCreateActivity(d, i.newSectionId!, i.newName!, 'time').id : i.activityId;
-        return { activityId, minutes: Math.round(Number(i.minutes) * 100) / 100, note: i.note.trim() || undefined };
-      });
+      const list = filled.map((i) =>
+        asItem(i, i.activityId === NEW ? findOrCreateActivity(d, i.newSectionId!, i.newName!, i.kind === 'amount' ? 'amount' : 'time').id : i.activityId),
+      );
       if (routine) {
         const r = d.routines.find((x) => x.id === routine.id);
         if (!r) return;
         r.name = name.trim();
-        r.items = list.map((i, n) => ({ ...i, id: routine.items[n]?.id ?? uid() }));
+        r.items = list.map((i, n) => tidyItem({ ...i, id: routine.items[n]?.id ?? uid() }));
       } else {
         createRoutine(d, name, list);
       }
     });
-    toast({ kind: 'success', title: routine ? 'Routine saved' : `Routine “${name.trim()}” created`, body: `${filled.length} item${filled.length === 1 ? '' : 's'} · ${fmtMinutes(total)}` });
+    toast({
+      kind: 'success',
+      title: routine ? 'Routine saved' : `Routine “${name.trim()}” created`,
+      body: `${filled.length} item${filled.length === 1 ? '' : 's'}${length ? ` · ${length}` : ''}`,
+    });
     onClose();
   };
 
   return (
     <Modal
       title={routine ? 'Edit routine' : 'New routine'}
-      subtitle="Pick what you train and for how many minutes. The order is the order you'll do them in."
+      subtitle="Pick what you train and for how many minutes, how many times, or with a stopwatch when there's no set time. The order is the order you'll do them in."
       onClose={onClose}
       wide
       footer={
         <>
           <span className="muted small" style={{ marginRight: 'auto' }}>
-            Total: <b>{fmtMinutes(total)}</b>
+            {length && (
+              <>
+                Total: <b>{length}</b>
+              </>
+            )}
           </span>
           <button className="btn ghost" onClick={onClose}>
             Cancel
@@ -235,12 +282,7 @@ function RoutineEditor({ routine, onClose }: { routine?: Routine; onClose: () =>
             </span>
             <div className="stack" style={{ gap: 6, flex: 1, minWidth: 0 }}>
               <div className="row" style={{ gap: 6 }}>
-                <select
-                  className="input"
-                  style={{ flex: 1, minWidth: 0 }}
-                  value={i.activityId}
-                  onChange={(e) => update(i.key, { activityId: e.target.value })}
-                >
+                <select className="input" style={{ flex: 1, minWidth: 0 }} value={i.activityId} onChange={(e) => pickActivity(i, e.target.value)}>
                   {sections.map((s) => {
                     const acts = sectionActivities(data, s.id);
                     if (!acts.length) return null;
@@ -256,10 +298,25 @@ function RoutineEditor({ routine, onClose }: { routine?: Routine; onClose: () =>
                   })}
                   <option value={NEW}>+ New activity…</option>
                 </select>
-                <div className="input-suffix small-suffix" style={{ width: 120 }}>
-                  <NumberInput value={i.minutes} onChange={(v) => update(i.key, { minutes: v })} placeholder="0" onEnter={save} />
-                  <span className="suffix">min</span>
-                </div>
+                {i.kind !== 'stopwatch' && (
+                  <div style={{ width: 80 }}>
+                    <NumberInput value={i.value} onChange={(v) => update(i.key, { value: v })} placeholder={i.kind === 'amount' ? '50' : '10'} onEnter={save} />
+                  </div>
+                )}
+                <select
+                  className="input kind-select"
+                  style={{ width: i.kind === 'stopwatch' ? 196 : 110 }}
+                  value={i.kind}
+                  title={KIND_OPTIONS.find((k) => k.value === i.kind)?.title}
+                  aria-label="Measured in"
+                  onChange={(e) => update(i.key, { kind: e.target.value as RoutineItemKind, kindTouched: true })}
+                >
+                  {KIND_OPTIONS.map((k) => (
+                    <option key={k.value} value={k.value} title={k.title}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               {i.activityId === NEW && (
                 <div className="row" style={{ gap: 6 }}>

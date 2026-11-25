@@ -91,7 +91,8 @@ describe('routines', () => {
     completeRoutineItem(day, dr.id, dr.items[1].id, 12);
     expect(day.entries.find((e) => e.activityId === 'act-freeplay')).toMatchObject({ minutes: 10 });
     expect(day.entries.find((e) => e.activityId === aerials.id)).toMatchObject({ minutes: 17, note: 'fast aerials' });
-    expect(routineProgress(dr)).toMatchObject({ done: 2, total: 2, minutesDone: 22, minutesTotal: 25, complete: true });
+    // 1.5: the 5 min of Aerials logged before the routine was added count towards it (5 + 12).
+    expect(routineProgress(dr)).toMatchObject({ done: 2, total: 2, minutesDone: 27, minutesTotal: 25, complete: true });
     expect(nextRoutineItem(dr)).toBeUndefined();
 
     // Unticking takes exactly its time off again; an entry that drops to 0 goes away.

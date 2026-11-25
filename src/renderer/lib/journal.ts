@@ -5,17 +5,19 @@ import {
   type AppData,
   type Day,
   type DayRoutine,
+  type DayRoutineItem,
   type Entry,
   type Measure,
   type Routine,
   type RoutineItem,
+  type RoutineItemKind,
   type Season,
   type Section,
   type Settings,
 } from '../../shared/model';
 import { DEFAULT_GAME_MODES, HONOR_DUEL_KEY, keyForLegacyName, playlistInfo, PRACTICE_MODE_NAMES } from '../../shared/playlists';
 import { addDays, diffDays, todayISO } from './dates';
-import { uid } from './format';
+import { fmtMinutes, fmtNum, uid } from './format';
 
 export const DEFAULT_SEASON_DAYS = 90;
 
@@ -133,7 +135,7 @@ export function normalizeData(raw: any): AppData {
     .map((r: any) => ({
       id: r.id ?? uid(),
       name: typeof r.name === 'string' && r.name.trim() ? r.name : 'Routine',
-      items: (Array.isArray(r.items) ? r.items : []).filter((i: any) => i && i.activityId && i.minutes > 0).map((i: any) => ({ ...i, id: i.id ?? uid() })),
+      items: (Array.isArray(r.items) ? r.items : []).filter((i: any) => i && routineItemValid(i)).map((i: any) => tidyItem({ ...i, id: i.id ?? uid() })),
       createdAt: r.createdAt ?? new Date().toISOString(),
     }));
   // Guarantee the two built-in top-level sections exist.
@@ -712,32 +714,149 @@ export function routineById(data: AppData, id: string) {
   return data.routines.find((r) => r.id === id);
 }
 
-export function routineMinutes(items: { minutes: number }[]) {
-  return items.reduce((a, i) => a + (i.minutes > 0 ? i.minutes : 0), 0);
+export function itemKind(i: { kind?: RoutineItemKind }): RoutineItemKind {
+  return i.kind === 'amount' || i.kind === 'stopwatch' ? i.kind : 'time';
 }
 
-/** Save a new routine (items without an activity or time are dropped). */
+/** The entry measure an item logs to (amounts as a count, everything else as time). */
+export function itemMeasure(i: { kind?: RoutineItemKind }): Measure {
+  return itemKind(i) === 'amount' ? 'amount' : 'time';
+}
+
+/** What an item asks for: minutes, or a count for 'amount' items. Undefined for a stopwatch item. */
+export function itemTarget(i: RoutineItem): number | undefined {
+  const k = itemKind(i);
+  if (k === 'stopwatch') return undefined;
+  return k === 'amount' ? i.amount ?? 0 : i.minutes;
+}
+
+/** Whether an item is complete enough to keep: an activity, and a time or amount unless it's a stopwatch. */
+export function routineItemValid(i: Partial<RoutineItem>): boolean {
+  if (!i.activityId) return false;
+  const k = itemKind(i);
+  if (k === 'stopwatch') return true;
+  return k === 'amount' ? Number(i.amount) > 0 : Number(i.minutes) > 0;
+}
+
+/** Keep only the fields an item's kind uses ('time' is stored without a kind, like 1.4 saves). */
+export function tidyItem<T extends RoutineItem>(i: T): T {
+  const kind = itemKind(i);
+  const out = { ...i, minutes: kind === 'time' ? round2(Number(i.minutes) || 0) : 0 };
+  if (kind === 'time') delete out.kind;
+  else out.kind = kind;
+  if (kind === 'amount') out.amount = round2(Number(i.amount) || 0);
+  else delete out.amount;
+  return out;
+}
+
+/** Planned minutes of the 'time' items. */
+export function routineMinutes(items: RoutineItem[]) {
+  return items.reduce((a, i) => a + (itemKind(i) === 'time' && i.minutes > 0 ? i.minutes : 0), 0);
+}
+
+export function hasStopwatchItems(items: RoutineItem[]) {
+  return items.some((i) => itemKind(i) === 'stopwatch');
+}
+
+/** A value of an item in its unit: "10m" for time, "50×" for an amount. */
+export function fmtItemValue(i: { kind?: RoutineItemKind }, value: number) {
+  return itemMeasure(i) === 'amount' ? `${fmtNum(value, 2)}×` : fmtMinutes(value);
+}
+
+/** What an item asks for: "10m", "50×" or "Stopwatch". */
+export function fmtItemPlan(i: RoutineItem) {
+  const t = itemTarget(i);
+  return t === undefined ? 'Stopwatch' : fmtItemValue(i, t);
+}
+
+/** How long a routine takes: "25m", "25m + stopwatch", "stopwatch", or '' when it's only amounts. */
+export function routineLengthLabel(items: RoutineItem[]) {
+  const min = routineMinutes(items);
+  const sw = hasStopwatchItems(items);
+  if (min > 0) return sw ? `${fmtMinutes(min)} + stopwatch` : fmtMinutes(min);
+  return sw ? 'stopwatch' : '';
+}
+
+/** Save a new routine (items without an activity, or without a time / amount, are dropped). */
 export function createRoutine(data: AppData, name: string, items: Omit<RoutineItem, 'id'>[]): Routine {
   const routine: Routine = {
     id: uid(),
     name: name.trim() || 'Routine',
-    items: items.filter((i) => i.activityId && i.minutes > 0).map((i) => ({ ...i, id: uid(), note: i.note?.trim() || undefined })),
+    items: items.filter(routineItemValid).map((i) => tidyItem({ ...i, id: uid(), note: i.note?.trim() || undefined })),
     createdAt: new Date().toISOString(),
   };
   data.routines.push(routine);
   return routine;
 }
 
-/** Start a routine on a day: its items are copied onto the day, ready to be ticked off. */
+/** How much of an item is done: what was logged before the routine was added plus what the routine logged. */
+export function itemProgress(i: DayRoutineItem): number {
+  const logged = itemMeasure(i) === 'amount' ? i.loggedAmount ?? 0 : i.loggedMinutes ?? 0;
+  return round2((i.prior ?? 0) + logged);
+}
+
+/** What's left of an item (minutes or a count). 0 for a stopwatch item. */
+export function itemRemaining(i: DayRoutineItem): number {
+  const t = itemTarget(i);
+  return t === undefined ? 0 : round2(Math.max(0, t - itemProgress(i)));
+}
+
+/**
+ * Count what the day already has towards a routine that's being added: items already done today
+ * are ticked off (showing what was really done, even if it's more than planned), partly done ones
+ * show how much is left. What the day's other routines already count isn't counted twice.
+ */
+function creditPriorWork(day: Day, dr: DayRoutine) {
+  const keyOf = (i: RoutineItem) => `${i.activityId}|${itemMeasure(i)}`;
+  const pool = new Map<string, number>();
+  for (const i of dr.items) {
+    const k = keyOf(i);
+    if (pool.has(k)) continue;
+    const entry = findDayEntry(day, i.activityId, itemMeasure(i));
+    let have = entry ? entryValue(entry, itemMeasure(i)) : 0;
+    for (const other of day.routines ?? []) for (const o of other.items) if (keyOf(o) === k) have -= itemProgress(o);
+    pool.set(k, round2(Math.max(0, have)));
+  }
+  // Items with a target take their share first, in order.
+  for (const i of dr.items) {
+    const t = itemTarget(i);
+    const left = pool.get(keyOf(i)) ?? 0;
+    if (t === undefined || t <= 0 || left <= 0) continue;
+    const take = Math.min(left, t);
+    i.prior = round2(take);
+    pool.set(keyOf(i), round2(left - take));
+  }
+  // Anything left over: the first stopwatch item of that activity, otherwise its last item (shows more than planned).
+  for (const [k, left] of pool) {
+    if (left <= 0) continue;
+    const same = dr.items.filter((i) => keyOf(i) === k);
+    const to = same.find((i) => itemKind(i) === 'stopwatch') ?? [...same].reverse().find((i) => itemTarget(i) !== undefined);
+    if (to) to.prior = round2((to.prior ?? 0) + left);
+  }
+  for (const i of dr.items) {
+    if (!i.prior) {
+      delete i.prior;
+      continue;
+    }
+    const t = itemTarget(i);
+    if (t === undefined || i.prior >= t) i.done = true;
+  }
+}
+
+/**
+ * Start a routine on a day: its items are copied onto the day, ready to be ticked off. What the day
+ * already has of an item's activity counts towards it (see creditPriorWork).
+ */
 export function startRoutineOnDay(day: Day, routine: Routine): DayRoutine {
   const dr: DayRoutine = {
     id: uid(),
     routineId: routine.id,
     name: routine.name,
-    items: routine.items.map((i) => ({ ...i, id: uid() })),
+    items: routine.items.map((i) => tidyItem({ ...i, id: uid() })),
     startedAt: new Date().toISOString(),
     autoNext: true,
   };
+  creditPriorWork(day, dr);
   day.routines = [...(day.routines ?? []), dr];
   return dr;
 }
@@ -756,38 +875,55 @@ export function routineProgress(dr: DayRoutine) {
   return {
     done: done.length,
     total: dr.items.length,
-    minutesDone: done.reduce((a, i) => a + (i.loggedMinutes ?? i.minutes), 0),
+    /** Time done so far on the items with a set time (including time logged before the routine was added). */
+    minutesDone: round2(dr.items.reduce((a, i) => a + (itemKind(i) === 'time' ? itemProgress(i) : 0), 0)),
     minutesTotal: routineMinutes(dr.items),
+    /** Time done on the stopwatch items (no set time, so not part of minutesTotal). */
+    stopwatchMinutes: round2(dr.items.reduce((a, i) => a + (itemKind(i) === 'stopwatch' ? itemProgress(i) : 0), 0)),
     complete: dr.items.length > 0 && done.length === dr.items.length,
   };
 }
 
 /**
- * Tick off a routine item and add its time to the day (`minutes` defaults to the planned time,
- * a timer passes what was actually done). Returns false if it was already done.
+ * Tick off a routine item and add it to the day. `value` (minutes, or a count for 'amount' items)
+ * defaults to what's left of it; a timer passes what was actually done, a stopwatch item ticked by
+ * hand adds nothing. Returns false if it was already done.
  */
-export function completeRoutineItem(day: Day, dayRoutineId: string, itemId: string, minutes?: number, note?: string) {
+export function completeRoutineItem(day: Day, dayRoutineId: string, itemId: string, value?: number, note?: string) {
   const item = findDayRoutine(day, dayRoutineId)?.items.find((i) => i.id === itemId);
   if (!item || item.done) return false;
-  const m = round2(minutes ?? item.minutes);
+  const v = round2(Math.max(0, value ?? itemRemaining(item)));
   item.done = true;
-  item.loggedMinutes = m;
-  if (m > 0) addToDay(day, { activityId: item.activityId, measure: 'time', minutes: m, note: note ?? item.note });
+  if (itemMeasure(item) === 'amount') {
+    item.loggedAmount = v;
+    if (v > 0) addToDay(day, { activityId: item.activityId, measure: 'amount', amount: v, note: note ?? item.note });
+  } else {
+    item.loggedMinutes = v;
+    if (v > 0) addToDay(day, { activityId: item.activityId, measure: 'time', minutes: v, note: note ?? item.note });
+  }
   return true;
 }
 
-/** Untick a routine item and take the time it added off the day again. */
+/**
+ * Untick a routine item and take what it added off the day again. What was logged before the
+ * routine was added stays on the day; if that alone covered the item, it stops counting towards it.
+ */
 export function undoRoutineItem(day: Day, dayRoutineId: string, itemId: string) {
   const item = findDayRoutine(day, dayRoutineId)?.items.find((i) => i.id === itemId);
   if (!item || !item.done) return false;
-  const m = item.loggedMinutes ?? 0;
-  const entry = findDayEntry(day, item.activityId, 'time');
-  if (entry && m > 0) {
-    entry.minutes = round2(Math.max(0, (entry.minutes ?? 0) - m));
-    if (!entry.minutes && !entry.auto) day.entries = day.entries.filter((e) => e !== entry);
+  const measure = itemMeasure(item);
+  const v = (measure === 'amount' ? item.loggedAmount : item.loggedMinutes) ?? 0;
+  const entry = findDayEntry(day, item.activityId, measure);
+  if (entry && v > 0) {
+    if (measure === 'amount') entry.amount = round2(Math.max(0, (entry.amount ?? 0) - v));
+    else entry.minutes = round2(Math.max(0, (entry.minutes ?? 0) - v));
+    if (!entryValue(entry, measure) && !entry.auto) day.entries = day.entries.filter((e) => e !== entry);
   }
   item.done = false;
   delete item.loggedMinutes;
+  delete item.loggedAmount;
+  const t = itemTarget(item);
+  if (item.prior && (t === undefined || item.prior >= t)) delete item.prior;
   return true;
 }
 

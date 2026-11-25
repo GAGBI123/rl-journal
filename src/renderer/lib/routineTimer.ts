@@ -1,6 +1,7 @@
 // Starts the timer for an item of a routine that was started on a day.
 import { useStore } from '../store';
-import { activityById, findDayRoutine, findSeason, sectionById } from './journal';
+import { activityById, findDayRoutine, findSeason, fmtItemPlan, itemKind, itemRemaining, nextRoutineItem, sectionById } from './journal';
+import { plural } from './format';
 import { confirmDialog } from '../components/ui';
 
 export interface RoutineItemRef {
@@ -10,13 +11,18 @@ export interface RoutineItemRef {
   itemId: string;
 }
 
-/** Start the countdown for a routine item. `ask` confirms first if another timer is running. */
+/**
+ * Start the timer for a routine item: a countdown for what's left of a 'time' item, a stopwatch for a
+ * 'stopwatch' item. 'amount' items have no timer. `ask` confirms first if another timer is running.
+ */
 export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Promise<boolean> {
   const { data, timer, toast } = useStore.getState();
   const day = findSeason(data, ref.seasonId)?.days.find((d) => d.id === ref.dayId);
   const dr = day ? findDayRoutine(day, ref.dayRoutineId) : undefined;
   const item = dr?.items.find((i) => i.id === ref.itemId);
   if (!day || !dr || !item) return false;
+  const kind = itemKind(item);
+  if (kind === 'amount') return false;
   const act = activityById(data, item.activityId);
   if (!act) {
     toast({ kind: 'error', title: 'This activity was deleted', body: 'Tick it off by hand or remove it from the routine.' });
@@ -39,10 +45,38 @@ export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Pr
     seasonId: ref.seasonId,
     dayId: ref.dayId,
     date: day.date,
-    durationMs: Math.round(item.minutes * 60_000),
+    durationMs: kind === 'stopwatch' ? 0 : Math.round((itemRemaining(item) || item.minutes) * 60_000),
     note: item.note,
-    mode: 'down',
+    mode: kind === 'stopwatch' ? 'up' : 'down',
     routine: { dayRoutineId: dr.id, itemId: item.id },
   });
   return true;
+}
+
+/**
+ * After a routine was added to a day: say what already counted towards it (logged earlier that day)
+ * and, with `runNow`, start the timer of the first item that isn't done yet.
+ */
+export async function afterRoutineAdded(ref: Omit<RoutineItemRef, 'itemId'>, runNow: boolean) {
+  const { data, toast } = useStore.getState();
+  const day = findSeason(data, ref.seasonId)?.days.find((d) => d.id === ref.dayId);
+  const dr = day ? findDayRoutine(day, ref.dayRoutineId) : undefined;
+  if (!dr) return;
+  const done = dr.items.filter((i) => i.done).length;
+  const partly = dr.items.filter((i) => !i.done && i.prior).length;
+  const parts = [done && `${plural(done, 'item')} done`, partly && `${plural(partly, 'item')} partly done`].filter(Boolean);
+  const already = parts.length ? `What you already logged today counts: ${parts.join(', ')}.` : '';
+  const next = nextRoutineItem(dr);
+  if (!next) {
+    toast({ kind: 'success', title: `${dr.name}: already done today`, body: 'Everything in it was already logged today, so it is ticked off.' });
+    return;
+  }
+  const name = activityById(data, next.activityId)?.name ?? 'next item';
+  if (runNow && itemKind(next) !== 'amount') {
+    const started = await startRoutineItemTimer({ ...ref, itemId: next.id });
+    if (started && already) toast({ kind: 'info', title: `${dr.name} started`, body: already });
+    return;
+  }
+  const hint = runNow ? `First up: ${fmtItemPlan(next)} ${name}. Tick it off when you're done.` : 'Tick items off as you go, or press Start to run their timers.';
+  toast({ kind: 'success', title: `${dr.name} added to the day`, body: already ? `${already} ${hint}` : hint });
 }

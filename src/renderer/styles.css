@@ -2341,6 +2341,14 @@ textarea.input.desc {
   white-space: nowrap;
 }
 
+.routine-item .ri-prior {
+  color: var(--good);
+}
+
+.routine-item .ri-time .muted {
+  font-weight: 500;
+}
+
 .routine-item .live-clock {
   color: var(--text);
   font-weight: 700;

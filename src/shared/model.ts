@@ -67,11 +67,22 @@ export interface Day {
   routines?: DayRoutine[];
 }
 
-/** One thing to do in a routine: an activity for a number of minutes. */
+/**
+ * How a routine item is measured: 'time' = a set number of minutes (countdown timer),
+ * 'amount' = a count (e.g. 50 shots), 'stopwatch' = no set length, timed with a stopwatch.
+ */
+export type RoutineItemKind = 'time' | 'amount' | 'stopwatch';
+
+/** One thing to do in a routine: an activity for a number of minutes, an amount, or a stopwatch. */
 export interface RoutineItem {
   id: string;
   activityId: string;
+  /** Missing in 1.4 saves (= 'time'). */
+  kind?: RoutineItemKind;
+  /** Planned minutes for 'time' items (0 for the other kinds). */
   minutes: number;
+  /** Planned count for 'amount' items. */
+  amount?: number;
   note?: string;
 }
 
@@ -87,6 +98,13 @@ export interface DayRoutineItem extends RoutineItem {
   done?: boolean;
   /** Minutes added to the day when it was completed (taken off again when it's unticked). */
   loggedMinutes?: number;
+  /** Count added to the day when an 'amount' item was completed (taken off again when it's unticked). */
+  loggedAmount?: number;
+  /**
+   * Already logged on the day before the routine was added (minutes, or a count for 'amount' items).
+   * It counts towards the item but wasn't added by the routine, so unticking never takes it off the day.
+   */
+  prior?: number;
 }
 
 /** A routine started on a day. Items are copied so later edits to the routine don't change past days. */

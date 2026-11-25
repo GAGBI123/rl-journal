@@ -10,6 +10,8 @@ import {
   ensureSyncDay,
   findDayRoutine,
   findSeason,
+  itemKind,
+  itemTarget,
   nextRoutineItem,
   seasonLabel,
 } from './lib/journal';
@@ -97,6 +99,7 @@ export function logTimer(c: TimerCompletion) {
   let target: { seasonId: string; dayId: string } | null = null;
   let next: RoutineItemRef | null = null;
   let nextLabel = '';
+  let nextManual = '';
   let routineDone = '';
   mutate((d) => {
     const t = c.timer;
@@ -117,8 +120,14 @@ export function logTimer(c: TimerCompletion) {
       const n = nextRoutineItem(dr);
       if (!n) routineDone = dr.name;
       else if (dr.autoNext) {
-        next = { seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId: n.id };
-        nextLabel = `${activityById(d, n.activityId)?.name ?? 'next item'} (${fmtMinutes(n.minutes)})`;
+        const name = activityById(d, n.activityId)?.name ?? 'next item';
+        const kind = itemKind(n);
+        // An amount has no timer: it waits to be ticked off.
+        if (kind === 'amount') nextManual = `${itemTarget(n)}× ${name}`;
+        else {
+          next = { seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId: n.id };
+          nextLabel = kind === 'stopwatch' ? `${name} (stopwatch)` : `${name} (${fmtMinutes(n.minutes)})`;
+        }
       }
     } else {
       addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, note: t.note });
@@ -137,7 +146,9 @@ export function logTimer(c: TimerCompletion) {
     ? `Routine “${routineDone}” complete. Added to ${where}.`
     : next
       ? `Next up: ${nextLabel}, started.`
-      : `Added to ${where}.`;
+      : nextManual
+        ? `Next up: ${nextManual}. Tick it off when you're done.`
+        : `Added to ${where}.`;
   toast({ kind: 'success', title, body, view: { name: 'day', seasonId: tgt.seasonId, dayId: tgt.dayId } });
   if (data.settings.timerSound) playChime();
   if (data.settings.systemNotifications) window.rlj.notify({ title, body });
