@@ -1,5 +1,6 @@
-# Builds the Windows installer and the Linux AppImage on every version tag (v1.2.3).
-# The files are uploaded as workflow artifacts; `npm run release` publishes them.
+# Builds the Windows installer and the Linux AppImage.
+# On a version tag (v1.2.3) the files are also published as a GitHub release,
+# which is where installed apps look for updates.
 name: Build
 
 on:
@@ -59,3 +60,39 @@ jobs:
             release/*.exe.blockmap
             release/*.AppImage
             release/latest*.yml
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          {
+            if [ -f "release-notes/$TAG.md" ]; then cat "release-notes/$TAG.md"; echo; fi
+            echo "## Download"
+            echo
+            echo "- **Windows:** \`RL-Journal-Setup-$VERSION.exe\`. Run it to install, or to update an older version."
+            echo "- **Linux:** \`RL-Journal-x86_64.AppImage\`. Make it executable, then double-click it."
+            echo
+            echo "Already installed? The app updates itself. Your journal is never replaced."
+          } > notes.md
+          ls -la out
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* --title "RL Journal $VERSION" --notes-file notes.md --latest
+          fi

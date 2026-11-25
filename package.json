@@ -4,8 +4,14 @@
   "version": "1.1.0",
   "description": "Rocket League training & games journal with season tracking, statistics and automatic game logging.",
   "author": "RL Journal",
+  "homepage": "https://github.com/GAGBI123/rl-journal",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GAGBI123/rl-journal.git"
+  },
   "private": true,
   "main": "dist-electron/main.js",
+  "desktopName": "rl-journal.desktop",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build:electron": "node scripts/build-electron.mjs",
@@ -52,7 +58,7 @@
       {
         "provider": "github",
         "owner": "GAGBI123",
-        "repo": "rl-journal-releases",
+        "repo": "rl-journal",
         "releaseType": "release"
       }
     ],
@@ -103,7 +109,5 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true
-  },
-  "desktopName": "rl-journal.desktop",
-  "homepage": "https://github.com/GAGBI123/rl-journal-releases"
+  }
 }
