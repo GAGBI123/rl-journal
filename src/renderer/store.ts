@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppData, LiveStatus } from '../shared/model';
+import type { AppData, LiveStatus, LocalPlayer, UpdateStatus } from '../shared/model';
 import { createDefaultData, normalizeData } from './lib/journal';
 import { uid } from './lib/format';
 
@@ -25,9 +25,9 @@ interface State {
   view: View;
   history: View[];
   liveStatus: LiveStatus;
-  livePlayers: { name: string; primaryId?: string }[];
+  livePlayers: LocalPlayer[];
+  update: UpdateStatus;
   toasts: Toast[];
-  syncing: Record<string, boolean>;
   navigate: (v: View, opts?: { replace?: boolean }) => void;
   back: () => void;
   mutate: (fn: (draft: AppData) => void) => void;
@@ -60,8 +60,8 @@ export const useStore = create<State>((set, get) => ({
   history: [],
   liveStatus: { state: 'disabled' },
   livePlayers: [],
+  update: { state: 'idle' },
   toasts: [],
-  syncing: {},
   navigate: (v, opts) =>
     set((s) => ({
       view: v,

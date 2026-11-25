@@ -183,7 +183,7 @@ export function StatsPage({ initialSeasonId }: { initialSeasonId?: string }) {
 
       {byCategory.length === 0 && <div className="card muted small" style={{ marginTop: 12 }}>No stats match.</div>}
       {byCategory.map(({ c, list }) => {
-        if (c === 'Activities' || c === 'Rank') {
+        if (c === 'Activities') {
           const groups = new Map<string, StatDef[]>();
           for (const d of list) groups.set(d.group ?? '', [...(groups.get(d.group ?? '') ?? []), d]);
           return (

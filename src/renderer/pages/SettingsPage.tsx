@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Clock, Download, FolderOpen, Hash, Plus, Trash2, Upload } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp, Clock, Download, FolderOpen, GripVertical, Hash, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { useStore } from '../store';
 import { confirmDialog, Field, Modal, Segmented, Toggle } from '../components/ui';
-import { normalizeData, SECTION_COLORS, sortedSections } from '../lib/journal';
+import { moveActivity, nextActivityOrder, normalizeData, SECTION_COLORS, sectionActivities, sortedSections } from '../lib/journal';
+import { relativeTime } from '../lib/dates';
 import { uid } from '../lib/format';
 import type { Measure, Section } from '../../shared/model';
 
@@ -82,6 +83,24 @@ function SectionsManager() {
   const mutate = useStore((s) => s.mutate);
   const [adding, setAdding] = useState(false);
   const [newAct, setNewAct] = useState<Record<string, string>>({});
+  // Drag-to-reorder state: which activity is dragged and where it would land.
+  const [drag, setDrag] = useState<{ id: string; sectionId: string } | null>(null);
+  const [drop, setDrop] = useState<{ id: string; after: boolean } | null>(null);
+
+  const move = (activityId: string, index: number) =>
+    mutate((d) => {
+      moveActivity(d, activityId, index);
+    });
+
+  const finishDrag = () => {
+    if (drag && drop && drop.id !== drag.id) {
+      const list = sectionActivities(data, drag.sectionId).filter((a) => a.id !== drag.id);
+      const at = list.findIndex((a) => a.id === drop.id);
+      if (at >= 0) move(drag.id, at + (drop.after ? 1 : 0));
+    }
+    setDrag(null);
+    setDrop(null);
+  };
 
   const deleteActivity = async (id: string, name: string) => {
     const n = countEntries(data, (a) => a === id);
@@ -127,6 +146,7 @@ function SectionsManager() {
         name,
         defaultMeasure: kind === 'games' ? 'amount' : 'time',
         defaultUnit: 'min',
+        order: nextActivityOrder(d, sectionId),
         createdAt: new Date().toISOString(),
       });
     });
@@ -143,7 +163,7 @@ function SectionsManager() {
       </div>
       <div className="grid auto-lg">
         {sortedSections(data).map((sec) => {
-          const acts = data.activities.filter((a) => a.sectionId === sec.id);
+          const acts = sectionActivities(data, sec.id);
           return (
             <div className="card settings-list" key={sec.id}>
               <div className="row between" style={{ marginBottom: 8 }}>
@@ -166,8 +186,47 @@ function SectionsManager() {
                   </button>
                 )}
               </div>
-              {acts.map((a) => (
-                <div className="act-row" key={a.id}>
+              {acts.map((a, i) => (
+                <div
+                  className={`act-row ${drag?.id === a.id ? 'dragging' : ''} ${drop?.id === a.id && drag?.id !== a.id ? (drop.after ? 'drop-after' : 'drop-before') : ''}`}
+                  key={a.id}
+                  draggable={drag?.id === a.id}
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', a.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (!drag || drag.sectionId !== sec.id) return;
+                    e.preventDefault();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const after = e.clientY > r.top + r.height / 2;
+                    if (drop?.id !== a.id || drop.after !== after) setDrop({ id: a.id, after });
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    finishDrag();
+                  }}
+                  onDragEnd={finishDrag}
+                >
+                  <div className="order-ctl">
+                    <span
+                      className="grip"
+                      title="Drag to move"
+                      onMouseDown={() => setDrag({ id: a.id, sectionId: sec.id })}
+                      onMouseUp={() => !drop && setDrag(null)}
+                    >
+                      <GripVertical size={15} />
+                    </span>
+                    <div className="arrows">
+                      <button aria-label={`Move ${a.name} up`} title="Move up" disabled={i === 0} onClick={() => move(a.id, i - 1)}>
+                        <ChevronUp size={13} />
+                      </button>
+                      <button aria-label={`Move ${a.name} down`} title="Move down" disabled={i === acts.length - 1} onClick={() => move(a.id, i + 1)}>
+                        <ChevronDown size={13} />
+                      </button>
+                    </div>
+                    <span className="order-num">{i + 1}</span>
+                  </div>
                   <InlineName
                     value={a.name}
                     onSave={(v) =>
@@ -219,6 +278,112 @@ function SectionsManager() {
   );
 }
 
+function UpdatesCard({ version }: { version: string }) {
+  const update = useStore((s) => s.update);
+  const auto = useStore((s) => s.data.settings.autoUpdate);
+  const mutate = useStore((s) => s.mutate);
+  const [busy, setBusy] = useState(false);
+  const check = async () => {
+    setBusy(true);
+    try {
+      await window.rlj.checkForUpdates();
+    } finally {
+      setBusy(false);
+    }
+  };
+  let status: ReactNode = null;
+  let action: ReactNode = (
+    <button className="btn" disabled={busy || update.state === 'checking'} onClick={check}>
+      <RefreshCw size={15} className={update.state === 'checking' ? 'spin' : ''} /> Check for updates
+    </button>
+  );
+  switch (update.state) {
+    case 'unsupported':
+      status = update.reason;
+      action = null;
+      break;
+    case 'idle':
+      status = 'Checks for new versions every few hours.';
+      break;
+    case 'checking':
+      status = 'Checking…';
+      break;
+    case 'none':
+      status = <>You have the latest version. Checked {relativeTime(update.lastCheck)}.</>;
+      break;
+    case 'available':
+      status = (
+        <>
+          Version <b>{update.version}</b> is available.
+        </>
+      );
+      action = (
+        <button className="btn primary" onClick={() => window.rlj.installUpdate()}>
+          <Download size={15} /> Install update
+        </button>
+      );
+      break;
+    case 'downloading':
+      status = (
+        <>
+          Downloading version {update.version}… {update.percent}%
+        </>
+      );
+      action = null;
+      break;
+    case 'downloaded':
+      status = auto ? (
+        <>
+          Version <b>{update.version}</b> is ready. It installs by itself when you aren't using the app, or now:
+        </>
+      ) : (
+        <>
+          Version <b>{update.version}</b> is ready to install.
+        </>
+      );
+      action = (
+        <button className="btn primary" onClick={() => window.rlj.installUpdate()}>
+          <RefreshCw size={15} /> Restart and update
+        </button>
+      );
+      break;
+    case 'installing':
+      status = <>Installing version {update.version}. The app restarts in a moment…</>;
+      action = null;
+      break;
+    case 'error':
+      status = <span className="down">{update.message}</span>;
+      break;
+  }
+  return (
+    <div className="card">
+      <div className="update-row">
+        <div>
+          <div style={{ fontWeight: 600 }}>RL Journal {version}</div>
+          <div className="muted small" style={{ marginTop: 2 }}>
+            {status}
+          </div>
+        </div>
+        {action}
+      </div>
+      {update.state !== 'unsupported' && (
+        <div style={{ marginTop: 8 }}>
+          <Toggle
+            title="Install updates automatically"
+            desc="Downloads new versions by itself and installs them when you aren't in a match or using the app, then tells you. Off: you get a notification and install with one click."
+            on={auto}
+            onChange={(v) =>
+              mutate((d) => {
+                d.settings.autoUpdate = v;
+              })
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const data = useStore((s) => s.data);
   const settings = data.settings;
@@ -226,6 +391,7 @@ export function SettingsPage() {
   const replaceData = useStore((s) => s.replaceData);
   const toast = useStore((s) => s.toast);
   const [version, setVersion] = useState('');
+  const isLinux = window.rlj.platform === 'linux';
   const [folder, setFolder] = useState('');
   useEffect(() => {
     window.rlj.version().then(setVersion);
@@ -276,24 +442,46 @@ export function SettingsPage() {
         <h2>Sync & notifications</h2>
       </div>
       <div className="card">
-        <Toggle title="Windows notifications" desc="Show a notification when games are added from your accounts." on={settings.systemNotifications} onChange={(v) => set('systemNotifications', v)} />
-        <Toggle title="Keep running in the tray when closed" desc="Needed for automatic sync while the window is closed." on={settings.closeToTray} onChange={(v) => set('closeToTray', v)} />
-        <Toggle title="Start with Windows" desc="Launches minimized to the tray so games keep syncing." on={settings.startWithWindows} onChange={(v) => set('startWithWindows', v)} />
-        <Toggle title="Ignore private, offline and training matches" desc="Exhibition, private matches, workshop and local games are not logged." on={settings.ignorePrivateMatches} onChange={(v) => set('ignorePrivateMatches', v)} />
+        <Toggle title="Desktop notifications" desc="Show a notification when a game is logged automatically." on={settings.systemNotifications} onChange={(v) => set('systemNotifications', v)} />
+        <Toggle title="Keep running in the tray when closed" desc="Needed for automatic logging while the window is closed." on={settings.closeToTray} onChange={(v) => set('closeToTray', v)} />
         <Toggle
-          title="Count casual games as 1s / 2s / 3s"
-          desc="Off: casual games are logged separately as “Casual 2s” and so on."
-          on={settings.countCasualAsRanked}
-          onChange={(v) => set('countCasualAsRanked', v)}
+          title={isLinux ? 'Start when I log in' : 'Start with Windows'}
+          desc="Starts minimized to the tray so games keep being logged."
+          on={settings.startWithWindows}
+          onChange={(v) => set('startWithWindows', v)}
+        />
+        <Toggle
+          title="Track wins and losses for auto-logged games"
+          desc="Ranked, casual and all other modes. Off: only the number of games is logged."
+          on={settings.trackResultsGames}
+          onChange={(v) => set('trackResultsGames', v)}
+        />
+        <Toggle
+          title="Track wins and losses for auto-logged honor duels"
+          desc="Off: honor duels are only counted."
+          on={settings.trackResultsHonorDuel}
+          onChange={(v) => set('trackResultsHonorDuel', v)}
+        />
+        <Toggle
+          title="Ignore private matches"
+          desc="Private and third-party matches are not logged. Freeplay, training, workshop and offline games are never logged."
+          on={settings.ignorePrivateMatches}
+          onChange={(v) => set('ignorePrivateMatches', v)}
         />
       </div>
+
+      <div className="section-title">
+        <h2>Updates</h2>
+      </div>
+      <UpdatesCard version={version} />
 
       <div className="section-title">
         <h2>Your data</h2>
       </div>
       <div className="card">
         <div className="muted small" style={{ marginBottom: 12 }}>
-          Everything is stored locally on this PC{folder ? <> in <code>{folder}</code></> : null}. A daily backup is kept for 14 days.
+          Everything is stored locally on this computer{folder ? <> in <code>{folder}</code></> : null}. A daily backup is kept for 14 days.
+          Installing an update or running the installer again never replaces your journal.
         </div>
         <div className="row wrap">
           <button className="btn" onClick={exportData}>
@@ -308,7 +496,7 @@ export function SettingsPage() {
         </div>
       </div>
       <div className="muted tiny" style={{ marginTop: 24, textAlign: 'center' }}>
-        RL Journal {version} · Not affiliated with Psyonix, Epic Games or Tracker Network.
+        RL Journal {version} · Not affiliated with Psyonix or Epic Games.
       </div>
     </div>
   );

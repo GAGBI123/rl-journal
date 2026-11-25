@@ -31,10 +31,11 @@ for (const season of [old, cur]) {
     day.entries.push(newEntry({ activityId: 'act-freeplay', measure: 'time', minutes: Math.round(15 + rnd() * 60), unit: 'min' }));
     if (rnd() < 0.4) day.entries.push(newEntry({ activityId: aerial.id, measure: 'time', minutes: Math.round(10 + rnd() * 35), unit: 'min' }));
     if (rnd() < 0.2) day.entries.push(newEntry({ activityId: recovery.id, measure: 'amount', amount: Math.round(20 + rnd() * 40) }));
-    for (const mode of ['act-1s', 'act-2s', 'act-3s']) {
+    for (const mode of ['act-1s', 'act-2s', 'act-3s', 'act-casual-2s']) {
       if (rnd() < 0.45) {
         const amount = Math.round(2 + rnd() * 9);
-        day.entries.push(newEntry({ activityId: mode, measure: 'amount', amount, wins: Math.round(amount * (0.35 + rnd() * 0.3)) }));
+        const wins = Math.round(amount * (0.35 + rnd() * 0.3));
+        day.entries.push(newEntry({ activityId: mode, measure: 'amount', amount, wins, losses: amount - wins }));
       }
     }
   }
@@ -44,11 +45,9 @@ data.accounts.push({
   id: 'demo-main',
   label: 'Main',
   platform: 'epic',
-  username: 'DemoPlayer',
   inGameNames: ['DemoPlayer'],
   primaryIds: [],
   liveGame: true,
-  tracker: { enabled: false, apiKey: '' },
   color: '#3b82f6',
   createdAt: new Date().toISOString(),
 });
@@ -58,7 +57,8 @@ for (let i = 0; i < 4; i++) {
   applyLiveMatch(data, {
     guid: `demo-${i}`,
     endedAt: new Date(Date.now() - (4 - i) * 15 * 60000).toISOString(),
-    playlistId: pick([10, 11, 13]),
+    playlistId: i === 3 ? 53 : pick([10, 11, 13, 3]),
+    localPlayer: { name: 'DemoPlayer', primaryId: 'Epic|demo|0', teamNum: myTeam },
     leftEarly: false,
     overtime: i === 2,
     winnerTeamNum: i === 1 ? 1 - myTeam : myTeam,

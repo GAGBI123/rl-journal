@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BarChart3, CalendarPlus, Check, CheckCircle2, Dumbbell, Flag, Gamepad2, ListChecks, Lock, LockOpen, Pencil, Trash2, X } from 'lucide-react';
+import { BarChart3, CalendarPlus, Check, CheckCircle2, Dumbbell, Flag, Gamepad2, ListChecks, Lock, LockOpen, Pencil, Trash2, X, Swords } from 'lucide-react';
 import { useStore } from '../store';
 import { dayNumber, findSeason, seasonEndDate, seasonLabel } from '../lib/journal';
 import { daySummary } from '../lib/stats';
@@ -266,9 +266,14 @@ export function SeasonPage({ seasonId }: { seasonId: string }) {
                         <Dumbbell size={12} color="var(--series-1)" /> {fmtMinutes(sum.training)}
                       </span>
                     )}
-                    {sum.games > 0 && (
+                    {sum.normalGames > 0 && (
                       <span>
-                        <Gamepad2 size={12} color="var(--series-2)" /> {sum.games} game{sum.games === 1 ? '' : 's'}
+                        <Gamepad2 size={12} color="var(--series-2)" /> {sum.normalGames} game{sum.normalGames === 1 ? '' : 's'}
+                      </span>
+                    )}
+                    {sum.honorDuels > 0 && (
+                      <span>
+                        <Swords size={12} color="var(--series-3)" /> {sum.honorDuels} duel{sum.honorDuels === 1 ? '' : 's'}
                       </span>
                     )}
                     {sum.other > 0 && <span className="muted">+{sum.other} more</span>}

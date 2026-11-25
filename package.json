@@ -1,8 +1,8 @@
 {
   "name": "rl-journal",
   "productName": "RL Journal",
-  "version": "1.0.0",
-  "description": "Rocket League training & games journal with season tracking, statistics and automatic game sync.",
+  "version": "1.1.0",
+  "description": "Rocket League training & games journal with season tracking, statistics and automatic game logging.",
   "author": "RL Journal",
   "private": true,
   "main": "dist-electron/main.js",
@@ -15,8 +15,11 @@
     "test": "vitest run",
     "start": "electron .",
     "icon": "electron scripts/make-icon.cjs",
-    "dist": "npm run build && electron-builder --win --x64",
-    "dist:dir": "npm run build && electron-builder --win --x64 --dir"
+    "dist": "npm run build && electron-builder --win --x64 --publish never",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --x64 --publish never",
+    "dist:dir": "npm run build && electron-builder --win --x64 --dir --publish never",
+    "release": "node scripts/release.mjs"
   },
   "build": {
     "appId": "com.rljournal.app",
@@ -33,8 +36,7 @@
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "icon": "build/icon.png"
     },
@@ -42,13 +44,44 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "RL Journal"
+      "shortcutName": "RL Journal",
+      "artifactName": "RL-Journal-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
     },
-    "portable": {
-      "artifactName": "RL-Journal-${version}-portable.exe"
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "GAGBI123",
+        "repo": "rl-journal-releases",
+        "releaseType": "release"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "Game",
+      "executableName": "rl-journal",
+      "synopsis": "Rocket League training & games journal",
+      "maintainer": "RL Journal",
+      "artifactName": "RL-Journal-x86_64.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "RL Journal",
+          "StartupWMClass": "RL Journal"
+        }
+      }
+    },
+    "appImage": {
+      "artifactName": "RL-Journal-x86_64.${ext}"
+    },
+    "toolsets": {
+      "appimage": "1.0.3"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "lucide-react": "^1.79.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -70,5 +103,7 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true
-  }
+  },
+  "desktopName": "rl-journal.desktop",
+  "homepage": "https://github.com/GAGBI123/rl-journal-releases"
 }

@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { DATA_VERSION } from '../shared/model';
 
 const dataDir = () => app.getPath('userData');
 const dataFile = () => path.join(dataDir(), 'journal.json');
@@ -9,7 +10,9 @@ const backupDir = () => path.join(dataDir(), 'backups');
 export async function loadData(): Promise<unknown | null> {
   try {
     const raw = await fs.readFile(dataFile(), 'utf8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    await keepPreUpgradeCopy(raw, parsed);
+    return parsed;
   } catch (err: any) {
     if (err?.code === 'ENOENT') return null;
     // Corrupt file: keep a copy and try the newest backup.
@@ -22,9 +25,25 @@ export async function loadData(): Promise<unknown | null> {
   }
 }
 
+/**
+ * Before a newer app version migrates an older save file, keep the untouched original
+ * (backups/before-upgrade-v<from>-to-v<N>.json). It is never deleted by the daily backup rotation.
+ */
+async function keepPreUpgradeCopy(raw: string, parsed: any) {
+  const from = typeof parsed?.version === 'number' ? parsed.version : 1;
+  if (from >= DATA_VERSION) return;
+  try {
+    await fs.mkdir(backupDir(), { recursive: true });
+    const file = path.join(backupDir(), `before-upgrade-v${from}-to-v${DATA_VERSION}.json`);
+    await fs.writeFile(file, raw, { encoding: 'utf8', flag: 'wx' }).catch(() => undefined);
+  } catch {
+    /* not critical */
+  }
+}
+
 async function loadNewestBackup(): Promise<unknown | null> {
   try {
-    const files = (await fs.readdir(backupDir())).filter((f) => f.endsWith('.json')).sort();
+    const files = (await fs.readdir(backupDir())).filter((f) => f.startsWith('journal-') && f.endsWith('.json')).sort();
     for (const f of files.reverse()) {
       try {
         return JSON.parse(await fs.readFile(path.join(backupDir(), f), 'utf8'));

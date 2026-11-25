@@ -1,6 +1,6 @@
 // Connects to the official Rocket League Stats API (local WebSocket) and reports finished matches.
 import WebSocket from 'ws';
-import type { LiveMatchResult, LiveStatus } from '../shared/model';
+import type { LiveMatchResult, LiveStatus, LocalPlayer } from '../shared/model';
 import { MatchTracker, parseEnvelope } from './matchTracker';
 
 export interface LiveGameCallbacks {
@@ -16,13 +16,18 @@ export class LiveGameClient {
   private port = 49124;
   private status: LiveStatus = { state: 'disabled' };
   private tracker: MatchTracker;
+  private player: LocalPlayer | undefined;
 
   constructor(private cb: LiveGameCallbacks) {
     this.tracker = new MatchTracker({
       onMatchFinished: (r) => this.cb.onMatch(r),
       onPlayers: (p) => this.cb.onPlayers(p),
       onMatchState: (inMatch, playlistId) => {
-        if (this.status.state === 'connected') this.setStatus({ state: 'connected', inMatch, playlistId });
+        if (this.status.state === 'connected') this.setStatus({ state: 'connected', inMatch, playlistId, player: this.player });
+      },
+      onLocalPlayer: (player) => {
+        this.player = player;
+        if (this.status.state === 'connected') this.setStatus({ ...this.status, player });
       },
     });
   }
@@ -73,7 +78,7 @@ export class LiveGameClient {
     const ws = new WebSocket(`ws://127.0.0.1:${this.port}`, { handshakeTimeout: 3000 });
     this.ws = ws;
     if (this.status.state !== 'waiting') this.setStatus({ state: 'waiting', detail: 'Waiting for Rocket League…' });
-    ws.on('open', () => this.setStatus({ state: 'connected', inMatch: false }));
+    ws.on('open', () => this.setStatus({ state: 'connected', inMatch: false, player: this.player }));
     ws.on('message', (buf) => {
       for (const msg of parseEnvelope(buf.toString())) {
         try {

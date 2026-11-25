@@ -41,7 +41,6 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   const next = season.days[idx + 1];
   const isToday = day.date === todayISO();
   const sum = daySummary(data, day);
-  const wins = day.entries.reduce((a, e) => a + (e.wins ?? 0), 0);
   const go = (id: string) => navigate({ name: 'day', seasonId: season.id, dayId: id }, { replace: true });
 
   const remove = async (e: Entry) => {
@@ -104,14 +103,27 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
         </div>
         <div className="card kv">
           <div className="k">Games</div>
-          <div className="v">
-            {fmtNum(sum.games)}
-            {wins > 0 && <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}> · {wins} wins</span>}
-          </div>
+          <div className="v">{fmtNum(sum.normalGames)}</div>
+          {sum.results.length > 0 && (
+            <div className="mode-results">
+              {sum.results.map((r) => (
+                <span key={r.activityId} title={`${r.name}: ${r.wins} wins, ${r.losses} losses`}>
+                  <b>{r.name}</b> <span className="up">{r.wins}W</span> <span className="down">{r.losses}L</span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="card kv">
-          <div className="k">Activities logged</div>
-          <div className="v">{day.entries.length}</div>
+          <div className="k">Honor duels</div>
+          <div className="v">{fmtNum(sum.honorDuels)}</div>
+          {sum.honor.known && (
+            <div className="mode-results">
+              <span>
+                <span className="up">{sum.honor.wins}W</span> <span className="down">{sum.honor.losses}L</span>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -146,8 +158,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                           {a?.name ?? 'Unknown'}
                           {e.auto && (
                             <span className="badge blue" style={{ height: 19, fontSize: 10.5 }}>
-                              <Radio size={11} /> {e.auto.source === 'game' ? 'Live game' : 'tracker.gg'}
-                              {account ? ` · ${account.label}` : ''}
+                              <Radio size={11} /> Auto{account ? ` · ${account.label}` : ''}
                             </span>
                           )}
                         </div>
@@ -159,14 +170,17 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                           ) : (
                             <span>{section.kind === 'games' ? 'Games' : 'Amount'}</span>
                           )}
-                          {e.wins !== undefined && e.measure === 'amount' && (
+                          {(e.wins !== undefined || e.losses !== undefined) && e.measure === 'amount' && (
                             <span>
                               {' '}
-                              · {e.wins}W{e.losses !== undefined ? ` ${e.losses}L` : ` ${Math.max(0, (e.amount ?? 0) - e.wins)}L`}
+                              · <span className="up">{e.wins ?? 0}W</span> <span className="down">{e.losses ?? 0}L</span>
+                              {(e.wins ?? 0) + (e.losses ?? 0) < (e.amount ?? 0) && (
+                                <span className="muted"> · {(e.amount ?? 0) - (e.wins ?? 0) - (e.losses ?? 0)} unknown</span>
+                              )}
                             </span>
                           )}
-                          {e.note && <span> · {e.note}</span>}
                         </div>
+                        {e.note && <div className="e-desc">{e.note}</div>}
                       </div>
                       <div className="e-value">
                         {e.measure === 'time' ? fmtMinutes(e.minutes) : fmtNum(e.amount)}
@@ -207,7 +221,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                 <tbody>
                   {matchesToday.map((m) => (
                     <tr key={m.id}>
-                      <td>{m.mode}</td>
+                      <td>{activityById(data, m.activityId)?.name ?? m.mode}</td>
                       <td className={m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}>
                         {m.result === 'win' ? (
                           <span className="row" style={{ gap: 4 }}>

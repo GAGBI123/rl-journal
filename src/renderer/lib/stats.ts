@@ -2,7 +2,8 @@
 import type { Activity, AppData, Day, Entry, MatchRecord, Measure, Season, Section } from '../../shared/model';
 import { addDays, diffDays, formatDate, todayISO, weekStart, weekdayIndex, WEEKDAYS_LONG } from './dates';
 import { fmtMinutes, fmtNum, fmtPct, plural } from './format';
-import { seasonLabel, sortedSections } from './journal';
+import { isHonorDuel, seasonLabel, sectionActivities, sortedSections } from './journal';
+import { HONOR_DUEL_KEY } from '../../shared/playlists';
 
 export type Scope = { kind: 'all' } | { kind: 'season'; seasonId: string };
 
@@ -45,7 +46,7 @@ export interface StatDef {
   compute: (ctx: StatsCtx) => StatValue | null;
 }
 
-export const CATEGORIES = ['Overview', 'Training', 'Games', 'Consistency', 'Records', 'Activities', 'Live games', 'Rank'] as const;
+export const CATEGORIES = ['Overview', 'Training', 'Games', 'Consistency', 'Records', 'Activities', 'Live games'] as const;
 export type StatCategory = (typeof CATEGORIES)[number];
 
 // ---------------------------------------------------------------- context
@@ -83,6 +84,9 @@ export function buildContext(data: AppData, scope: Scope, today = todayISO()): S
 type Pred = (f: FlatEntry) => boolean;
 const isTraining: Pred = (f) => f.section?.kind === 'training';
 const isGames: Pred = (f) => f.section?.kind === 'games';
+const isHonor: Pred = (f) => f.activity?.key === HONOR_DUEL_KEY;
+const isRanked: Pred = (f) => !!f.activity?.key?.startsWith('ranked-');
+const isCasual: Pred = (f) => !!f.activity?.key?.startsWith('casual-');
 const ofActivity = (id: string): Pred => (f) => f.entry.activityId === id;
 const ofSection = (id: string): Pred => (f) => f.section?.id === id;
 
@@ -423,6 +427,40 @@ const STATIC: StatDef[] = [
     },
   },
   {
+    id: 'games.honorDuels',
+    label: 'Honor duels',
+    category: 'Games',
+    compute: (c) => {
+      const list = where(c, isGames, isHonor);
+      const n = sum(list, 'amount');
+      if (!n) return empty('0', 'No honor duels yet');
+      const w = winStats(list);
+      return { value: fmtNum(n), sub: w.rate === undefined ? plural(byDate(list, 'amount').size, 'day') : `${w.wins}W – ${w.losses}L · ${fmtPct(w.rate, 0)} won` };
+    },
+  },
+  {
+    id: 'games.rankedVsCasual',
+    label: 'Ranked vs casual',
+    category: 'Games',
+    compute: (c) => {
+      const ranked = where(c, isGames, isRanked);
+      const casual = where(c, isGames, isCasual);
+      const r = sum(ranked, 'amount');
+      const k = sum(casual, 'amount');
+      if (!r && !k) return empty();
+      const wr = winStats(ranked);
+      const wc = winStats(casual);
+      return {
+        value: `${fmtNum(r)} / ${fmtNum(k)}`,
+        sub: 'ranked / casual games',
+        breakdown: [
+          { label: 'Ranked', value: `${fmtNum(r)}${wr.rate !== undefined ? ` · ${fmtPct(wr.rate, 0)} won` : ''}`, raw: r },
+          { label: 'Casual', value: `${fmtNum(k)}${wc.rate !== undefined ? ` · ${fmtPct(wc.rate, 0)} won` : ''}`, raw: k },
+        ],
+      };
+    },
+  },
+  {
     id: 'games.thisWeek',
     label: 'Games this week',
     category: 'Games',
@@ -659,7 +697,7 @@ const STATIC: StatDef[] = [
 function activityStats(data: AppData): StatDef[] {
   const out: StatDef[] = [];
   for (const section of sortedSections(data)) {
-    for (const a of data.activities.filter((x) => x.sectionId === section.id)) {
+    for (const a of sectionActivities(data, section.id)) {
       const group = `${section.name} · ${a.name}`;
       const games = section.kind === 'games';
       const list = (c: StatsCtx) => where(c, ofActivity(a.id));
@@ -774,41 +812,8 @@ function sectionStats(data: AppData): StatDef[] {
     ]);
 }
 
-function rankStats(data: AppData): StatDef[] {
-  const keys = new Map<string, { accountId: string; playlist: string }>();
-  for (const p of data.mmr) keys.set(`${p.accountId}::${p.playlist}`, { accountId: p.accountId, playlist: p.playlist });
-  return [...keys.values()].map(({ accountId, playlist }) => {
-    const account = data.accounts.find((a) => a.id === accountId);
-    return {
-      id: `mmr:${accountId}:${playlist}`,
-      label: `${playlist} MMR`,
-      category: 'Rank' as const,
-      group: account?.label ?? 'Removed account',
-      compute: (c: StatsCtx) => {
-        let points = c.data.mmr.filter((p) => p.accountId === accountId && p.playlist === playlist);
-        if (c.scope.kind === 'season' && c.seasons[0]) {
-          const s = c.seasons[0];
-          const end = s.days[s.days.length - 1]?.date ?? s.startDate;
-          points = points.filter((p) => p.at.slice(0, 10) >= s.startDate && p.at.slice(0, 10) <= end);
-        }
-        if (!points.length) return empty();
-        const last = points[points.length - 1];
-        const first = points[0];
-        const peak = Math.max(...points.map((p) => p.rating));
-        const d = last.rating - first.rating;
-        const tier = [last.tier, last.division].filter(Boolean).join(' · ');
-        return {
-          value: fmtNum(last.rating),
-          sub: `${d > 0 ? '▲' : d < 0 ? '▼' : '•'} ${Math.abs(d)} · peak ${fmtNum(peak)}${tier ? ` · ${tier}` : ''}`,
-          trend: d > 0 ? 'up' : d < 0 ? 'down' : 'flat',
-        };
-      },
-    };
-  });
-}
-
 export function allStats(data: AppData): StatDef[] {
-  return [...STATIC, ...sectionStats(data), ...activityStats(data), ...rankStats(data)];
+  return [...STATIC, ...sectionStats(data), ...activityStats(data)];
 }
 
 export function statById(data: AppData, id: string): StatDef | undefined {
@@ -894,17 +899,44 @@ export function seasonSummaries(data: AppData, today = todayISO()): SeasonSummar
     });
 }
 
-/** Quick per-day summary used on day cards. */
+export interface ModeResult {
+  activityId: string;
+  name: string;
+  games: number;
+  wins: number;
+  losses: number;
+}
+
+/** Quick per-day summary used on day cards and the day page. */
 export function daySummary(data: AppData, day: Day) {
   let training = 0;
   let games = 0;
+  let honorDuels = 0;
   let other = 0;
+  /** Wins/losses per game mode, only for modes with recorded results (Honor Duel separate). */
+  const results: ModeResult[] = [];
+  let honor: { wins: number; losses: number; known: boolean } = { wins: 0, losses: 0, known: false };
   for (const e of day.entries) {
     const a = data.activities.find((x) => x.id === e.activityId);
     const s = a ? data.sections.find((x) => x.id === a.sectionId) : undefined;
     if (s?.kind === 'training' && e.measure === 'time') training += e.minutes ?? 0;
-    else if (s?.kind === 'games' && e.measure === 'amount') games += e.amount ?? 0;
-    else other++;
+    else if (s?.kind === 'games' && e.measure === 'amount') {
+      const n = e.amount ?? 0;
+      games += n;
+      const known = e.wins !== undefined || e.losses !== undefined;
+      if (isHonorDuel(a)) {
+        honorDuels += n;
+        if (known) honor = { wins: honor.wins + (e.wins ?? 0), losses: honor.losses + (e.losses ?? 0), known: true };
+      } else if (known && a) {
+        const r = results.find((x) => x.activityId === a.id) ?? { activityId: a.id, name: a.name, games: 0, wins: 0, losses: 0 };
+        if (!results.includes(r)) results.push(r);
+        r.games += n;
+        r.wins += e.wins ?? 0;
+        r.losses += e.losses ?? 0;
+      }
+    } else other++;
   }
-  return { training, games, other, count: day.entries.length };
+  const order = new Map(data.activities.map((a) => [a.id, a.order]));
+  results.sort((x, y) => (order.get(x.activityId) ?? 0) - (order.get(y.activityId) ?? 0));
+  return { training, games, normalGames: games - honorDuels, honorDuels, honor, results, other, count: day.entries.length };
 }

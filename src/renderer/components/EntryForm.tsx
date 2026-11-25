@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock, Hash, Plus, Save, Sparkles, Trophy } from 'lucide-react';
+import { Clock, Hash, Layers, Plus, Save, Sparkles, Trophy } from 'lucide-react';
 import { useStore } from '../store';
 import { NumberInput, Segmented } from './ui';
-import { activityById, findOrCreateActivity, findSeason, newEntry, sortedSections } from '../lib/journal';
+import { activityById, addToDay, findDayEntry, findOrCreateActivity, findSeason, mergeInto, sectionActivities, sortedSections } from '../lib/journal';
 import { compareEntry } from '../lib/compare';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import type { Day, Entry, Measure, Season, TimeUnit } from '../../shared/model';
@@ -49,15 +49,8 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   const section = sections.find((s) => s.id === sectionId);
   const isGames = section?.kind === 'games';
 
-  const usage = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const s of data.seasons) for (const d of s.days) for (const e of d.entries) map.set(e.activityId, (map.get(e.activityId) ?? 0) + 1);
-    return map;
-  }, [data.seasons]);
-
-  const activities = data.activities
-    .filter((a) => a.sectionId === sectionId)
-    .sort((a, b) => (usage.get(b.id) ?? 0) - (usage.get(a.id) ?? 0) || a.createdAt.localeCompare(b.createdAt));
+  // The user's order from Settings (built-in modes first, newest last by default).
+  const activities = sectionActivities(data, sectionId);
 
   // Pick sensible defaults when the activity changes.
   useEffect(() => {
@@ -72,7 +65,7 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activityId, creating]);
 
-  // Pre-select the most used activity of the section (one less click).
+  // Pre-select the first activity of the section (one less click).
   useEffect(() => {
     if (!editing && !activityId && !creating && activities[0]) setActivityId(activities[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,11 +81,13 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   const num = Number(value);
   const base = !value || !Number.isFinite(num) ? 0 : measure === 'time' ? (unit === 'hr' ? num * 60 : num) : num;
   const winsNum = wins === '' ? undefined : Math.floor(Number(wins));
-  const winsInvalid = winsNum !== undefined && measure === 'amount' && (winsNum < 0 || winsNum > num);
+  const winsInvalid = winsNum !== undefined && measure === 'amount' && (!Number.isFinite(winsNum) || winsNum < 0 || winsNum > num);
   const nameTaken =
     creating && newName.trim() && activities.some((a) => a.name.toLowerCase() === newName.trim().toLowerCase());
   const hasActivity = (activityId && !creating) || (creating && newName.trim().length > 0);
   const valid = !!hasActivity && base > 0 && !winsInvalid;
+  // Adding the same activity twice on a day goes into one entry.
+  const existing = !editing && activityId && !creating ? findDayEntry(day, activityId, measure) : undefined;
 
   const cmp = useMemo(() => {
     if (!activityId || creating) return null;
@@ -109,6 +104,7 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   const submit = () => {
     if (!valid || !section) return;
     let label = '';
+    let mergedTotal: number | undefined;
     mutate((d) => {
       const s = findSeason(d, season.id);
       const target = s?.days.find((x) => x.id === day.id);
@@ -120,22 +116,32 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       activity.defaultMeasure = measure;
       if (measure === 'time') activity.defaultUnit = unit;
       label = activity.name;
-      const fields: Partial<Entry> =
+      const old = editing ? target.entries.find((x) => x.id === editing.id) : undefined;
+      // Wins given → the other games were losses. Unchanged values keep the recorded results.
+      const keepResults = old && old.measure === 'amount' && measure === 'amount' && old.amount === num && old.wins === winsNum;
+      const results =
+        measure === 'amount' && isGames && winsNum !== undefined
+          ? keepResults
+            ? { wins: old!.wins, losses: old!.losses }
+            : { wins: winsNum, losses: Math.max(0, num - winsNum) }
+          : { wins: undefined, losses: undefined };
+      const fields =
         measure === 'time'
           ? { measure, minutes: +base.toFixed(2), unit, amount: undefined, wins: undefined, losses: undefined }
-          : {
-              measure,
-              amount: num,
-              minutes: undefined,
-              unit: undefined,
-              wins: isGames ? winsNum : undefined,
-              losses: editing?.auto?.source === 'game' && winsNum !== undefined ? Math.max(0, num - winsNum) : undefined,
-            };
-      if (editing) {
-        const e = target.entries.find((x) => x.id === editing.id);
-        if (e) Object.assign(e, fields, { activityId: activity.id, note: note.trim() || undefined });
+          : { measure, amount: num, minutes: undefined, unit: undefined, ...results };
+      const desc = note.trim() || undefined;
+      if (old) {
+        Object.assign(old, fields, { activityId: activity.id, note: desc });
+        // Switched to an activity that is already logged today: combine the two.
+        const twin = findDayEntry(target, activity.id, measure, old.id);
+        if (twin) {
+          mergeInto(twin, old);
+          target.entries = target.entries.filter((x) => x.id !== old.id);
+          for (const m of d.matches) if (m.entryId === old.id) m.entryId = twin.id;
+        }
       } else {
-        target.entries.push(newEntry({ activityId: activity.id, ...(fields as any), note: note.trim() || undefined }));
+        const res = addToDay(target, { activityId: activity.id, ...fields, note: desc });
+        if (res.merged) mergedTotal = measure === 'time' ? res.entry.minutes : res.entry.amount;
       }
       setActivityId(activity.id);
     });
@@ -144,10 +150,14 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     setValue('');
     setWins('');
     setNote('');
+    const added = measure === 'time' ? fmtMinutes(base) : `${fmtNum(num)}${isGames ? ' games' : ''}`;
     toast({
       kind: 'success',
-      title: editing ? 'Entry updated' : `Added ${label}`,
-      body: measure === 'time' ? fmtMinutes(base) : `${fmtNum(num)}${isGames ? ' games' : ''}`,
+      title: editing ? 'Entry updated' : mergedTotal !== undefined ? `Added to ${label}` : `Added ${label}`,
+      body:
+        mergedTotal !== undefined
+          ? `+${added} · now ${measure === 'time' ? fmtMinutes(mergedTotal) : `${fmtNum(mergedTotal)}${isGames ? ' games' : ''}`} today`
+          : added,
     });
     props.onDone?.();
   };
@@ -258,7 +268,28 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
         )}
       </div>
 
-      <input className="input" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+      <div className="step">
+        <div className="step-label">
+          <span className="n">4</span> Description <span className="muted" style={{ fontWeight: 500 }}>(optional)</span>
+        </div>
+        <textarea
+          className="input desc"
+          rows={2}
+          placeholder={isGames ? 'How did it go? e.g. good rotations, lost to kickoffs…' : 'What did you work on? e.g. aerials, dribbles, flicks…'}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && submit()}
+        />
+      </div>
+
+      {existing && (
+        <div className="callout info" style={{ padding: '8px 10px' }}>
+          <Layers size={15} />
+          <div className="small">
+            Already logged today: {existing.measure === 'time' ? fmtMinutes(existing.minutes) : `${fmtNum(existing.amount)}${isGames ? ' games' : ''}`}. This adds to it.
+          </div>
+        </div>
+      )}
 
       {cmp && (
         <div className="compare">
@@ -315,7 +346,7 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
 
       <button className="btn primary large" disabled={!valid} onClick={submit}>
         {editing ? <Save size={17} /> : isGames ? <Trophy size={17} /> : <Plus size={17} />}
-        {editing ? 'Save changes' : 'Add to day'}
+        {editing ? 'Save changes' : existing ? 'Add to today’s total' : 'Add to day'}
       </button>
     </div>
   );

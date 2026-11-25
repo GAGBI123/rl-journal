@@ -2,8 +2,10 @@
 
 export type Measure = 'time' | 'amount';
 export type TimeUnit = 'min' | 'hr';
-export type Platform = 'epic' | 'steam' | 'psn' | 'xbl' | 'switch';
-export type SyncSource = 'game' | 'tracker';
+export type Platform = 'epic' | 'steam' | 'psn' | 'xbl' | 'switch' | 'other';
+
+/** Current save-file schema. Older files are migrated in normalizeData(). */
+export const DATA_VERSION = 2;
 
 export interface Section {
   id: string;
@@ -23,6 +25,13 @@ export interface Activity {
   defaultMeasure: Measure;
   defaultUnit: TimeUnit;
   builtIn?: boolean;
+  /**
+   * Stable id for game modes the live game connection logs to ("ranked-3s", "honor-duel", …).
+   * Lets the user rename an activity without breaking automatic logging.
+   */
+  key?: string;
+  /** Position inside its section (lower = first). */
+  order: number;
   createdAt: string;
 }
 
@@ -36,17 +45,15 @@ export interface Entry {
   unit?: TimeUnit;
   /** Count when measure === 'amount'. */
   amount?: number;
-  /** Optional wins for game entries. */
+  /** Wins among the games of this entry whose result is known. */
   wins?: number;
-  /**
-   * Optional explicit losses. When absent, losses = amount - wins.
-   * Auto-synced entries set it so games with unknown results don't skew win rate.
-   */
+  /** Losses among the games of this entry whose result is known. */
   losses?: number;
+  /** Optional description of what was done (e.g. "aerials, flicks"). */
   note?: string;
   createdAt: string;
-  /** Set when the entry was created by an automatic sync. */
-  auto?: { source: SyncSource; accountId?: string };
+  /** Set when (part of) the entry was added by the live game connection. */
+  auto?: { source: 'game'; accountId?: string };
 }
 
 export interface Day {
@@ -68,38 +75,16 @@ export interface Season {
   days: Day[];
 }
 
-export interface TrackerPlaylistStat {
-  name: string;
-  matchesPlayed: number;
-  rating?: number;
-  tier?: string;
-  division?: string;
-}
-
-export interface TrackerSnapshot {
-  at: string;
-  playlists: TrackerPlaylistStat[];
-  overview: Record<string, number>;
-}
-
 export interface Account {
   id: string;
   label: string;
   platform: Platform;
-  /** Platform username / Epic display name / Steam ID used by tracker.gg. */
-  username: string;
-  /** In-game names used to find you in live matches (Stats API). */
+  /** In-game names used to find you in live matches. */
   inGameNames: string[];
   /** Platform IDs ("Epic|abc|0") seen in live matches and linked to this account. */
   primaryIds: string[];
+  /** Log this account's matches automatically. */
   liveGame: boolean;
-  tracker: {
-    enabled: boolean;
-    apiKey: string;
-    lastSnapshot?: TrackerSnapshot;
-    lastCheckedAt?: string;
-    lastError?: string;
-  };
   color: string;
   createdAt: string;
 }
@@ -137,16 +122,7 @@ export interface MatchRecord {
   teamScore?: number;
   opponentScore?: number;
   overtime?: boolean;
-  source: SyncSource;
-}
-
-export interface MmrPoint {
-  accountId: string;
-  playlist: string;
-  rating: number;
-  tier?: string;
-  division?: string;
-  at: string;
+  source: 'game';
 }
 
 export interface AppNotification {
@@ -160,29 +136,41 @@ export interface AppNotification {
   target?: { seasonId: string; dayId?: string };
 }
 
+export interface LocalPlayer {
+  name: string;
+  primaryId?: string;
+}
+
 export interface Settings {
   favorites: string[];
-  trackerPollMinutes: number;
   liveGameEnabled: boolean;
   liveGamePort: number;
   ignorePrivateMatches: boolean;
-  countCasualAsRanked: boolean;
+  /** Record wins and losses for auto-logged games (all modes except Honor Duel). */
+  trackResultsGames: boolean;
+  /** Record wins and losses for auto-logged Honor Duels. */
+  trackResultsHonorDuel: boolean;
   systemNotifications: boolean;
   closeToTray: boolean;
+  /** Start when the user logs in (Windows and Linux). */
   startWithWindows: boolean;
-  trackerBaseUrl: string;
+  /** Download and install updates by itself. Off: only tell the user. */
+  autoUpdate: boolean;
   /** Players seen in the last live match, used for "that's me" linking. */
-  lastMatchPlayers?: { name: string; primaryId?: string }[];
+  lastMatchPlayers?: LocalPlayer[];
+  /** The player last seen controlling the game on this PC. */
+  lastLocalPlayer?: LocalPlayer;
+  /** App version that last opened this file (used for the "updated" message). */
+  lastRunVersion?: string;
 }
 
 export interface AppData {
-  version: 1;
+  version: number;
   seasons: Season[];
   sections: Section[];
   activities: Activity[];
   accounts: Account[];
   matches: MatchRecord[];
-  mmr: MmrPoint[];
   notifications: AppNotification[];
   settings: Settings;
 }
@@ -198,16 +186,14 @@ export interface LiveMatchResult {
   overtime: boolean;
   teams: { teamNum: number; score: number; name?: string }[];
   players: MatchPlayer[];
+  /** The player controlling the game on this PC (the camera target), when known. */
+  localPlayer?: { name: string; primaryId?: string; teamNum: number };
 }
 
 export type LiveStatus =
   | { state: 'disabled' }
   | { state: 'waiting'; detail?: string }
-  | { state: 'connected'; inMatch: boolean; playlistId?: number };
-
-export type TrackerFetchResult =
-  | { ok: true; snapshot: TrackerSnapshot }
-  | { ok: false; status?: number; error: string };
+  | { state: 'connected'; inMatch: boolean; playlistId?: number; player?: LocalPlayer };
 
 export interface StatsApiSetupResult {
   ok: boolean;
@@ -215,3 +201,14 @@ export interface StatsApiSetupResult {
   message: string;
   needsRestart?: boolean;
 }
+
+export type UpdateStatus =
+  | { state: 'unsupported'; reason: string }
+  | { state: 'idle'; lastCheck?: string }
+  | { state: 'checking' }
+  | { state: 'none'; lastCheck: string }
+  | { state: 'available'; version: string; notes?: string }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'downloaded'; version: string; notes?: string }
+  | { state: 'installing'; version: string }
+  | { state: 'error'; message: string };

@@ -1,38 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  FolderOpen,
-  Gamepad2,
-  Info,
-  Pencil,
-  Plus,
-  Radio,
-  RefreshCw,
-  Trash2,
-  TriangleAlert,
-  UserCheck,
-  Wifi,
-  WifiOff,
-} from 'lucide-react';
+import { CheckCircle2, FolderOpen, Gamepad2, Pencil, Plus, Radio, Trash2, TriangleAlert, UserCheck, Wifi, WifiOff } from 'lucide-react';
 import { useStore } from '../store';
-import { confirmDialog, EmptyState, Field, Modal, NumberInput, Segmented, Toggle } from '../components/ui';
-import { syncTrackerAccount } from '../syncRuntime';
-import { relativeTime, formatDate } from '../lib/dates';
+import { confirmDialog, EmptyState, Field, Modal, NumberInput, Toggle } from '../components/ui';
+import { formatDate } from '../lib/dates';
+import { accountForPlayer } from '../lib/sync';
 import { uid } from '../lib/format';
 import { SECTION_COLORS, seasonLabel } from '../lib/journal';
 import { playlistInfo } from '../../shared/playlists';
-import type { Account, Platform } from '../../shared/model';
+import type { Account } from '../../shared/model';
 import type { StatsApiStatus } from '../env';
 
-const PLATFORMS: { value: Platform; label: string }[] = [
-  { value: 'epic', label: 'Epic' },
-  { value: 'steam', label: 'Steam' },
-  { value: 'psn', label: 'PlayStation' },
-  { value: 'xbl', label: 'Xbox' },
-  { value: 'switch', label: 'Switch' },
-];
+
 
 function LiveGameSection() {
   const status = useStore((s) => s.liveStatus);
@@ -72,6 +50,10 @@ function LiveGameSection() {
   };
 
   const connected = status.state === 'connected';
+  const accounts = useStore((s) => s.data.accounts);
+  const lastPlayer = useStore((s) => s.data.settings.lastLocalPlayer);
+  const player = status.state === 'connected' ? status.player ?? lastPlayer : undefined;
+  const playerLabel = player ? accountForPlayer(accounts, player)?.label ?? player.name : undefined;
   return (
     <div className="card">
       <div className="row between" style={{ alignItems: 'flex-start' }}>
@@ -82,7 +64,7 @@ function LiveGameSection() {
           <div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>Live game connection</div>
             <div className="muted small">
-              Uses Rocket League's official Stats API. Every match you finish is logged automatically, with mode, result and your stats.
+              Uses Rocket League's official Stats API. Every online match you finish is logged automatically: ranked or casual, the mode, win or loss, and your stats.
             </div>
           </div>
         </div>
@@ -93,8 +75,8 @@ function LiveGameSection() {
             : status.state === 'waiting'
               ? 'Waiting for Rocket League'
               : status.inMatch
-                ? `In match${status.playlistId !== undefined ? ` · ${playlistInfo(status.playlistId).mode}` : ''}`
-                : 'Connected'}
+                ? `In match${status.playlistId !== undefined ? ` · ${playlistInfo(status.playlistId).mode}` : ''}${playerLabel ? ` · ${playerLabel}` : ''}`
+                : `Connected${playerLabel ? ` · ${playerLabel}` : ''}`}
         </span>
       </div>
 
@@ -174,8 +156,8 @@ function LiveGameSection() {
             <ol className="steps" style={{ marginTop: 8 }}>
               <li>Click <b>Enable Stats API</b> (or set <code>PacketSendRate</code> above 0 in <code>TAGame\Config\TAStatsAPI.ini</code> yourself).</li>
               <li>Restart Rocket League. The game then streams match events to this PC only.</li>
-              <li>Add your accounts below with your in-game names so the app knows which player is you (for wins and your stats).</li>
-              <li>Finished matches go to today's day in your active season, and you get a notification.</li>
+              <li>Play. The app sees which player you control, so your account is detected by itself (also when you switch accounts).</li>
+              <li>Finished matches go to today's day in your active season, and you get a notification. Freeplay, training and offline games are not logged.</li>
             </ol>
           </details>
           <div className="row">
@@ -226,7 +208,7 @@ function LastMatchPlayers() {
       <div className="row between">
         <div>
           <div style={{ fontWeight: 600 }}>Players in your {live.length ? 'current' : 'last'} match</div>
-          <div className="muted small">Not sure what name to use? Click “That's me” on yourself to link it to an account.</div>
+          <div className="muted small">You're detected automatically. If a match ever shows “Not matched”, click “That's me” on yourself.</div>
         </div>
         {liveAccounts.length > 1 && (
           <select className="input" style={{ width: 200 }} value={target || liveAccounts[0].id} onChange={(e) => setTarget(e.target.value)}>
@@ -255,46 +237,23 @@ function LastMatchPlayers() {
           </div>
         ))}
       </div>
-      {!liveAccounts.length && <div className="muted small" style={{ marginTop: 10 }}>Add an account with “Live game” turned on to link players.</div>}
+      {!liveAccounts.length && <div className="muted small" style={{ marginTop: 10 }}>Your account appears here after your first match.</div>}
     </div>
   );
 }
 
 function AccountModal({ account, onClose }: { account?: Account; onClose: () => void }) {
   const accounts = useStore((s) => s.data.accounts);
-  const settings = useStore((s) => s.data.settings);
   const mutate = useStore((s) => s.mutate);
   const [label, setLabel] = useState(account?.label ?? (accounts.length ? `Account ${accounts.length + 1}` : 'Main'));
-  const [platform, setPlatform] = useState<Platform>(account?.platform ?? 'epic');
-  const [username, setUsername] = useState(account?.username ?? '');
   const [names, setNames] = useState((account?.inGameNames ?? []).join(', '));
   const [liveGame, setLiveGame] = useState(account?.liveGame ?? true);
-  const [trackerOn, setTrackerOn] = useState(account?.tracker.enabled ?? false);
-  const [apiKey, setApiKey] = useState(account?.tracker.apiKey ?? '');
-  const [showKey, setShowKey] = useState(false);
-  const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);
-  const [testing, setTesting] = useState(false);
 
-  const valid = label.trim() && (username.trim() || names.trim());
   const inGameNames = names
     .split(',')
     .map((n) => n.trim())
     .filter(Boolean);
-
-  const runTest = async () => {
-    setTesting(true);
-    setTest(null);
-    const r = await window.rlj.trackerFetch({ platform, username, apiKey, baseUrl: settings.trackerBaseUrl });
-    setTesting(false);
-    if (r.ok) {
-      const top = r.snapshot.playlists
-        .filter((p) => p.rating)
-        .slice(0, 3)
-        .map((p) => `${p.name}: ${p.rating}`)
-        .join(' · ');
-      setTest({ ok: true, text: `Connected. Found ${r.snapshot.playlists.length} playlists. ${top}` });
-    } else setTest({ ok: false, text: r.error });
-  };
+  const valid = label.trim().length > 0;
 
   const save = () => {
     if (!valid) return;
@@ -303,27 +262,16 @@ function AccountModal({ account, onClose }: { account?: Account; onClose: () => 
       const base: Account = existing ?? {
         id: uid(),
         label: '',
-        platform,
-        username: '',
+        platform: 'other',
         inGameNames: [],
         primaryIds: [],
         liveGame: true,
-        tracker: { enabled: false, apiKey: '' },
         color: SECTION_COLORS[d.accounts.length % SECTION_COLORS.length],
         createdAt: new Date().toISOString(),
       };
-      const identityChanged = existing && (existing.platform !== platform || existing.username !== username.trim());
       base.label = label.trim();
-      base.platform = platform;
-      base.username = username.trim();
-      base.inGameNames = inGameNames.length ? inGameNames : username.trim() ? [username.trim()] : [];
+      base.inGameNames = inGameNames;
       base.liveGame = liveGame;
-      base.tracker.enabled = trackerOn;
-      base.tracker.apiKey = apiKey.trim();
-      if (identityChanged) {
-        base.tracker.lastSnapshot = undefined;
-        base.tracker.lastCheckedAt = undefined;
-      }
       if (!existing) d.accounts.push(base);
     });
     onClose();
@@ -331,9 +279,8 @@ function AccountModal({ account, onClose }: { account?: Account; onClose: () => 
 
   return (
     <Modal
-      wide
       title={account ? `Edit ${account.label}` : 'Add account'}
-      subtitle="Add one entry per Rocket League account you play on."
+      subtitle="Accounts are detected by themselves when you play. Add one here only to set a name in advance."
       onClose={onClose}
       footer={
         <>
@@ -346,92 +293,34 @@ function AccountModal({ account, onClose }: { account?: Account; onClose: () => 
         </>
       }
     >
-      <div className="grid cols-2">
-        <Field label="Label">
-          <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Main, Smurf…" autoFocus />
-        </Field>
-        <Field label="Platform">
-          <select className="input" value={platform} onChange={(e) => setPlatform(e.target.value as Platform)}>
-            {PLATFORMS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
-      <Field label="Username / ID" help="Your Epic display name, Steam ID, PSN or Xbox gamertag — as used on tracker.gg.">
-        <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
+      <Field label="Name in the app">
+        <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Main, Smurf…" autoFocus />
       </Field>
-      <Field label="In-game names" help="Comma separated. Used to find you in live matches. Leave empty to use the username.">
+      <Field label="In-game names" help="Comma separated. Optional: the app also recognizes you by your account ID once you've played a match.">
         <input className="input" value={names} onChange={(e) => setNames(e.target.value)} placeholder="e.g. MyName, MyOldName" />
       </Field>
-      <div>
-        <Toggle
-          title="Live game (Rocket League Stats API)"
-          desc="Log this account's matches from the game on this PC. Recommended."
-          on={liveGame}
-          onChange={setLiveGame}
-        />
-        <Toggle
-          title="tracker.gg API"
-          desc={liveGame ? 'With live game on, tracker.gg is only used for rank/MMR so games are not counted twice.' : 'Poll tracker.gg and add new games from this account automatically.'}
-          on={trackerOn}
-          onChange={setTrackerOn}
-        />
-      </div>
-      {trackerOn && (
-        <div className="stack">
-          <Field label="tracker.gg API key (TRN-Api-Key)">
-            <div className="row">
-              <input
-                className="input"
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your API key"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button className="icon-btn" onClick={() => setShowKey(!showKey)} aria-label={showKey ? 'Hide key' : 'Show key'}>
-                {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-              <button className="btn" onClick={runTest} disabled={testing || !apiKey.trim() || !username.trim()}>
-                {testing ? 'Testing…' : 'Test'}
-              </button>
-            </div>
-          </Field>
-          {test && (
-            <div className={`callout ${test.ok ? 'good' : 'error'}`}>
-              {test.ok ? <CheckCircle2 size={16} /> : <TriangleAlert size={16} />}
-              <div>{test.text}</div>
-            </div>
-          )}
-          <div className="callout warn">
-            <Info size={16} />
-            <div>
-              tracker.gg issues API keys per app, and Rocket League isn't always included. If the test fails with 401/403, use the live
-              game connection instead. It's official and needs no key. The key is stored only on this PC.
-            </div>
-          </div>
+      <Toggle title="Log this account's games" desc="Matches played on this account are added to your season automatically." on={liveGame} onChange={setLiveGame} />
+      {account && account.primaryIds.length > 0 && (
+        <div className="muted small">
+          Linked account ID{account.primaryIds.length > 1 ? 's' : ''}: {account.primaryIds.map((id) => id.split('|').slice(0, 1).join('')).join(', ')}
         </div>
       )}
     </Modal>
   );
 }
 
+const PLATFORM_LABEL: Record<string, string> = { epic: 'Epic', steam: 'Steam', psn: 'PlayStation', xbl: 'Xbox', switch: 'Switch', other: '' };
+
 function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void }) {
   const mutate = useStore((s) => s.mutate);
-  const syncing = useStore((s) => !!s.syncing[account.id]);
   const allMatches = useStore((s) => s.data.matches);
+  const status = useStore((s) => s.liveStatus);
   const matches = useMemo(() => allMatches.filter((m) => m.accountId === account.id), [allMatches, account.id]);
-  const mmr = useStore((s) => s.data.mmr);
-  const toast = useStore((s) => s.toast);
-  const ranks = account.tracker.lastSnapshot?.playlists.filter((p) => p.rating !== undefined) ?? [];
+  const playingNow = status.state === 'connected' && !!status.player && !!accountForPlayer([account], status.player);
   const remove = async () => {
     const ok = await confirmDialog({
       title: `Remove ${account.label}?`,
-      body: 'Games already logged stay in your journal. Sync for this account stops.',
+      body: 'Games already logged stay in your journal. If you play on this account again, it is added back.',
       confirmLabel: 'Remove',
       danger: true,
     });
@@ -440,13 +329,9 @@ function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void
         d.accounts = d.accounts.filter((a) => a.id !== account.id);
       });
   };
-  const syncNow = async () => {
-    const err = await syncTrackerAccount(account.id);
-    if (err) toast({ kind: 'error', title: `${account.label}: sync failed`, body: err });
-    else toast({ kind: 'info', title: `${account.label} synced` });
-  };
   const wins = matches.filter((m) => m.result === 'win').length;
   const losses = matches.filter((m) => m.result === 'loss').length;
+  const platform = PLATFORM_LABEL[account.platform] ?? '';
   return (
     <div className="card account-card">
       <div className="row between" style={{ alignItems: 'flex-start' }}>
@@ -457,7 +342,7 @@ function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void
           <div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>{account.label}</div>
             <div className="muted small">
-              {PLATFORMS.find((p) => p.value === account.platform)?.label} · {account.username || account.inGameNames.join(', ') || '—'}
+              {[platform, account.inGameNames.join(', ')].filter(Boolean).join(' · ') || 'Not seen in a match yet'}
             </div>
           </div>
         </div>
@@ -471,11 +356,13 @@ function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void
         </div>
       </div>
       <div className="row wrap" style={{ gap: 6 }}>
+        {playingNow && (
+          <span className="badge active">
+            <span className="pill-dot" /> Playing now
+          </span>
+        )}
         <span className={`badge ${account.liveGame ? 'active' : ''}`}>
-          <Radio size={12} /> Live game {account.liveGame ? 'on' : 'off'}
-        </span>
-        <span className={`badge ${account.tracker.enabled ? (account.tracker.lastError ? 'error' : 'blue') : ''}`}>
-          tracker.gg {account.tracker.enabled ? (account.tracker.lastError ? 'error' : 'on') : 'off'}
+          <Radio size={12} /> Auto-logging {account.liveGame ? 'on' : 'off'}
         </span>
         {matches.length > 0 && (
           <span className="badge">
@@ -483,43 +370,8 @@ function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void
           </span>
         )}
       </div>
-      {account.liveGame && (
-        <div className="small text-2">
-          Matches as: {account.inGameNames.length ? account.inGameNames.join(', ') : <span className="down">no in-game name set</span>}
-          {account.primaryIds.length > 0 && <span className="muted"> · {account.primaryIds.length} linked ID{account.primaryIds.length > 1 ? 's' : ''}</span>}
-        </div>
-      )}
-      {account.tracker.enabled && (
-        <div className="stack" style={{ gap: 8 }}>
-          {account.tracker.lastError && (
-            <div className="callout error" style={{ padding: '8px 10px' }}>
-              <TriangleAlert size={15} />
-              <div className="small">{account.tracker.lastError}</div>
-            </div>
-          )}
-          {ranks.length > 0 && (
-            <div className="row wrap" style={{ gap: 6 }}>
-              {ranks.slice(0, 6).map((p) => {
-                const hist = mmr.filter((m) => m.accountId === account.id && m.playlist === p.name);
-                const d = hist.length > 1 ? hist[hist.length - 1].rating - hist[0].rating : 0;
-                return (
-                  <span key={p.name} className="badge" title={[p.tier, p.division].filter(Boolean).join(' · ')}>
-                    {p.name.replace('Ranked ', '')}: {p.rating}
-                    {d !== 0 && <span className={d > 0 ? 'up' : 'down'}>{d > 0 ? `▲${d}` : `▼${-d}`}</span>}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          <div className="row between">
-            <span className="muted small">
-              {account.tracker.lastCheckedAt ? `Checked ${relativeTime(account.tracker.lastCheckedAt)}` : 'Not synced yet'}
-            </span>
-            <button className="btn small" onClick={syncNow} disabled={syncing}>
-              <RefreshCw size={14} className={syncing ? 'spin' : ''} /> {syncing ? 'Syncing…' : 'Sync now'}
-            </button>
-          </div>
-        </div>
+      {account.primaryIds.length === 0 && account.inGameNames.length === 0 && (
+        <div className="small down">No name or linked ID yet. Play a match and it links by itself.</div>
       )}
     </div>
   );
@@ -533,7 +385,7 @@ function RecentMatches() {
   return (
     <>
       <div className="section-title">
-        <h2>Recently synced games</h2>
+        <h2>Recently logged games</h2>
       </div>
       <div className="card" style={{ padding: '6px 10px' }}>
         <table className="table">
@@ -551,14 +403,15 @@ function RecentMatches() {
             {recent.map((m) => {
               const s = data.seasons.find((x) => x.id === m.seasonId);
               const a = data.accounts.find((x) => x.id === m.accountId);
+              const act = data.activities.find((x) => x.id === m.activityId);
               return (
                 <tr key={m.id} className="clickable" onClick={() => s && navigate({ name: 'day', seasonId: s.id, dayId: m.dayId })}>
                   <td className="muted">
                     {formatDate(m.date)} {new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </td>
-                  <td>{m.mode}</td>
+                  <td>{act?.name ?? m.mode}</td>
                   <td className={m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}>
-                    {m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Left early' : 'Loss') : 'Unknown'}
+                    {m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Left early' : 'Loss') : '—'}
                   </td>
                   <td>{m.teamScore !== undefined ? `${m.teamScore} – ${m.opponentScore ?? 0}` : '—'}</td>
                   <td>{a?.label ?? <span className="muted">Not matched</span>}</td>
@@ -575,21 +428,17 @@ function RecentMatches() {
 
 export function AccountsPage() {
   const accounts = useStore((s) => s.data.accounts);
-  const settings = useStore((s) => s.data.settings);
-  const mutate = useStore((s) => s.mutate);
   const [editing, setEditing] = useState<Account | 'new' | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const trackerAccounts = accounts.filter((a) => a.tracker.enabled).length;
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1>Accounts & Sync</h1>
-          <div className="subtitle">Connect your Rocket League accounts so games are logged automatically.</div>
+          <div className="subtitle">Games you play are logged automatically, for every account you play on.</div>
         </div>
         <div className="actions">
-          <button className="btn primary" onClick={() => setEditing('new')}>
+          <button className="btn" onClick={() => setEditing('new')}>
             <Plus size={16} /> Add account
           </button>
         </div>
@@ -613,9 +462,9 @@ export function AccountsPage() {
       ) : (
         <EmptyState
           title="No accounts yet"
-          body="Add each Rocket League account you play on. Use your in-game name so live matches can be matched to you."
+          body="Play a match with Rocket League open and your account is added by itself. You can also add one now."
           action={
-            <button className="btn primary" onClick={() => setEditing('new')}>
+            <button className="btn" onClick={() => setEditing('new')}>
               <Plus size={16} /> Add account
             </button>
           }
@@ -623,45 +472,6 @@ export function AccountsPage() {
       )}
 
       <RecentMatches />
-
-      <div className="section-title">
-        <h2>tracker.gg sync</h2>
-      </div>
-      <div className="card">
-        <div className="row between">
-          <div>
-            <div style={{ fontWeight: 500 }}>Check for new games every</div>
-            <div className="muted small">{trackerAccounts} account{trackerAccounts === 1 ? '' : 's'} using tracker.gg</div>
-          </div>
-          <Segmented
-            value={String(settings.trackerPollMinutes)}
-            onChange={(v) =>
-              mutate((d) => {
-                d.settings.trackerPollMinutes = Number(v);
-              })
-            }
-            options={['2', '5', '10', '15', '30'].map((v) => ({ value: v, label: `${v} min` }))}
-          />
-        </div>
-        <button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setShowAdvanced(!showAdvanced)}>
-          {showAdvanced ? 'Hide' : 'Show'} advanced
-        </button>
-        {showAdvanced && (
-          <div style={{ marginTop: 10 }}>
-            <Field label="API base URL" help="Default: https://public-api.tracker.gg/v2. Requests go to {base}/rocket-league/standard/profile/{platform}/{user}.">
-              <input
-                className="input"
-                value={settings.trackerBaseUrl}
-                onChange={(e) =>
-                  mutate((d) => {
-                    d.settings.trackerBaseUrl = e.target.value;
-                  })
-                }
-              />
-            </Field>
-          </div>
-        )}
-      </div>
 
       {editing && <AccountModal account={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
     </div>

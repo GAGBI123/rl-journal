@@ -2,6 +2,7 @@
 import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { StatsApiSetupResult } from '../shared/model';
+import { linuxRocketLeagueCandidates } from './rlInstallLinux';
 
 const SECTION = '[TAGame.MatchStatsExporter_TA]';
 
@@ -39,6 +40,10 @@ async function steamInstalls(): Promise<string[]> {
 }
 
 export async function findRocketLeagueInstall(): Promise<string | null> {
+  if (process.platform === 'linux') {
+    const found = (await linuxRocketLeagueCandidates()).find((c) => existsSync(path.join(c, 'TAGame', 'Config')));
+    return found ?? null;
+  }
   const candidates = [
     ...(await epicInstalls()),
     ...(await steamInstalls()),
@@ -152,7 +157,9 @@ export async function setupStatsApi(installDir?: string): Promise<StatsApiSetupR
       ok: false,
       path: file,
       message: denied
-        ? 'Windows blocked writing to the game folder. Run RL Journal as administrator once and try again, or edit the file manually.'
+        ? process.platform === 'win32'
+          ? 'Windows blocked writing to the game folder. Run RL Journal as administrator once and try again, or edit the file manually.'
+          : 'No permission to write to the game folder. Edit the file manually (see below).'
         : `Could not write the file: ${err?.message ?? err}`,
     };
   }

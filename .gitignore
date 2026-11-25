@@ -5,3 +5,5 @@ release/
 .tmp/
 *.log
 .DS_Store
+release-dist/
+dev-app-update.yml

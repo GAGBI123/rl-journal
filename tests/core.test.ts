@@ -11,10 +11,9 @@ import {
 } from '../src/renderer/lib/journal';
 import { allStats, buildContext, statById, timeline } from '../src/renderer/lib/stats';
 import { compareEntry } from '../src/renderer/lib/compare';
-import { applyLiveMatch, applyTrackerSnapshot } from '../src/renderer/lib/sync';
+import { applyLiveMatch } from '../src/renderer/lib/sync';
 import { MatchTracker, parseEnvelope } from '../src/main/matchTracker';
 import { applyStatsApiSettings } from '../src/main/statsApiConfig';
-import { parseTrackerProfile } from '../src/main/tracker';
 import type { LiveMatchResult } from '../src/shared/model';
 
 const TODAY = '2026-11-25';
@@ -85,7 +84,8 @@ describe('seasons & days', () => {
     const d = normalizeData({ seasons: [{ id: 'x', number: 1, startDate: '2026-01-01', status: 'active', days: [{ id: 'a', date: '2026-01-02' }] }] });
     expect(d.sections.some((s) => s.kind === 'games')).toBe(true);
     expect(d.seasons[0].days[0].entries).toEqual([]);
-    expect(d.settings.trackerPollMinutes).toBe(5);
+    expect(d.settings.trackResultsGames).toBe(true);
+    expect(d.settings.autoUpdate).toBe(true);
   });
 });
 
@@ -104,9 +104,9 @@ describe('statistics', () => {
     expect(v('training.avgActiveDay').value).toBe('1h');
     // 25 days elapsed (Nov 1..25), 120 minutes total -> 4.8 min/day
     expect(v('training.dailyAvg').value).toBe('5m');
-    expect(v('games.mostPlayed').value).toBe('2s');
+    expect(v('games.mostPlayed').value).toBe('Ranked 2s');
     const byMode = v('games.byMode');
-    expect(byMode.breakdown?.map((b) => b.label)).toEqual(['2s', '3s']);
+    expect(byMode.breakdown?.map((b) => b.label)).toEqual(['Ranked 2s', 'Ranked 3s']);
     expect(v('record.bestTrainingDay').value).toBe('1h 30m');
     expect(v('streak.longest').value).toBe('3 days');
   });
@@ -164,10 +164,7 @@ const match = (over: Partial<LiveMatchResult> = {}): LiveMatchResult => ({
 describe('live game sync', () => {
   it('logs a won 2s match to today for the matching account and dedupes by guid', () => {
     const { data, season } = setup();
-    data.accounts.push({
-      id: 'acc1', label: 'Main', platform: 'epic', username: 'Me', inGameNames: ['me'], primaryIds: [], liveGame: true,
-      tracker: { enabled: false, apiKey: '' }, color: '#fff', createdAt: '',
-    });
+    data.accounts.push({ id: 'acc1', label: 'Main', platform: 'epic', inGameNames: ['me'], primaryIds: [], liveGame: true, color: '#fff', createdAt: '' });
     const r = applyLiveMatch(data, match());
     expect(r.logged).toBe(true);
     const day = season.days.find((d) => d.date === TODAY)!;
@@ -184,8 +181,9 @@ describe('live game sync', () => {
     const { data, season } = setup();
     expect(applyLiveMatch(data, match({ playlistId: 6, guid: 'P' })).logged).toBe(false);
     expect(applyLiveMatch(data, match({ playlistId: 27, guid: 'H' })).logged).toBe(true);
-    const hoops = data.activities.find((a) => a.name === 'Hoops')!;
+    const hoops = data.activities.find((a) => a.name === 'Ranked Hoops')!;
     expect(hoops.sectionId).toBe('sec-games');
+    expect(hoops.order).toBe(7); // after the 7 built-in modes
     // unknown player -> result unknown, not counted in wins/losses
     const e = season.days.find((d) => d.date === TODAY)!.entries[0];
     expect(e).toMatchObject({ amount: 1, wins: 0, losses: 0 });
@@ -196,60 +194,6 @@ describe('live game sync', () => {
     const r = applyLiveMatch(data, match());
     expect(r.logged).toBe(false);
     expect(r.notification?.kind).toBe('error');
-  });
-});
-
-describe('tracker.gg sync', () => {
-  it('stores a baseline first, then adds per-playlist deltas', () => {
-    const { data, season } = setup();
-    data.accounts.push({
-      id: 't1', label: 'Alt', platform: 'steam', username: 'x', inGameNames: [], primaryIds: [], liveGame: false,
-      tracker: { enabled: true, apiKey: 'k' }, color: '#fff', createdAt: '',
-    });
-    const at = new Date(2026, 10, 25, 18).toISOString();
-    applyTrackerSnapshot(data, 't1', { at, overview: {}, playlists: [{ name: 'Ranked Doubles 2v2', matchesPlayed: 100, rating: 1000 }] });
-    expect(season.days.find((d) => d.date === TODAY)!.entries).toHaveLength(0);
-    const r = applyTrackerSnapshot(data, 't1', {
-      at,
-      overview: {},
-      playlists: [
-        { name: 'Ranked Doubles 2v2', matchesPlayed: 104, rating: 1030 },
-        { name: 'Ranked Duel 1v1', matchesPlayed: 5 },
-      ],
-    });
-    expect(r.logged).toBe(true);
-    const e = season.days.find((d) => d.date === TODAY)!.entries[0];
-    expect(e).toMatchObject({ activityId: 'act-2s', amount: 4 });
-    expect(data.mmr.map((m) => m.rating)).toEqual([1000, 1030]);
-  });
-
-  it('only tracks rank when the live game connection covers the account', () => {
-    const { data, season } = setup();
-    data.accounts.push({
-      id: 't2', label: 'Main', platform: 'epic', username: 'x', inGameNames: [], primaryIds: [], liveGame: true,
-      tracker: { enabled: true, apiKey: 'k' }, color: '#fff', createdAt: '',
-    });
-    const at = new Date(2026, 10, 25, 18).toISOString();
-    applyTrackerSnapshot(data, 't2', { at, overview: {}, playlists: [{ name: 'Ranked Standard 3v3', matchesPlayed: 10 }] });
-    applyTrackerSnapshot(data, 't2', { at, overview: {}, playlists: [{ name: 'Ranked Standard 3v3', matchesPlayed: 12 }] });
-    expect(season.days.find((d) => d.date === TODAY)!.entries).toHaveLength(0);
-  });
-
-  it('parses the tracker.gg segments format', () => {
-    const json = {
-      data: {
-        segments: [
-          { type: 'overview', stats: { wins: { value: 500 } } },
-          {
-            type: 'playlist',
-            metadata: { name: 'Ranked Doubles 2v2' },
-            stats: { matchesPlayed: { value: 42 }, rating: { value: 1234 }, tier: { metadata: { name: 'Champion I' } }, division: { metadata: { name: 'Division II' } } },
-          },
-        ],
-      },
-    };
-    expect(parseTrackerProfile(json)).toEqual([{ name: 'Ranked Doubles 2v2', matchesPlayed: 42, rating: 1234, tier: 'Champion I', division: 'Division II' }]);
-    expect(parseTrackerProfile({})).toBeNull();
   });
 });
 

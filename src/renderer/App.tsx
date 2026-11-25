@@ -11,6 +11,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { dayForDate, dayNumber, findSeason, seasonLabel } from './lib/journal';
 import { relativeTime, todayISO } from './lib/dates';
 import { playlistInfo } from '../shared/playlists';
+import { accountForPlayer } from './lib/sync';
 
 function Sidebar() {
   const view = useStore((s) => s.view);
@@ -70,19 +71,42 @@ function Sidebar() {
 function LivePill() {
   const status = useStore((s) => s.liveStatus);
   const navigate = useStore((s) => s.navigate);
+  const accounts = useStore((s) => s.data.accounts);
+  const lastPlayer = useStore((s) => s.data.settings.lastLocalPlayer);
   if (status.state === 'disabled') return null;
-  const label =
-    status.state === 'waiting'
-      ? 'Game: waiting'
-      : status.inMatch
-        ? `In match${status.playlistId !== undefined ? ` · ${playlistInfo(status.playlistId).mode}` : ''}`
-        : 'Game connected';
+  // The account playing on this PC: from the game right now, or the last one seen.
+  const player = status.state === 'connected' ? status.player ?? lastPlayer : undefined;
+  const who = player ? accountForPlayer(accounts, player)?.label ?? player.name : '';
+  let label: string;
+  if (status.state === 'waiting') label = 'Game: waiting';
+  else if (status.inMatch) {
+    const info = playlistInfo(status.playlistId);
+    const where = status.playlistId === undefined ? '' : info.kind === 'practice' ? info.mode : `${info.mode}`;
+    label = info.kind === 'practice' ? `${where || 'Training'}${who ? ` · ${who}` : ''}` : `In match${where ? ` · ${where}` : ''}${who ? ` · ${who}` : ''}`;
+  } else label = `Game connected${who ? ` · ${who}` : ''}`;
   return (
-    <button className={`status-pill ${status.state}`} onClick={() => navigate({ name: 'accounts' })} title="Live game connection">
+    <button className={`status-pill ${status.state}`} onClick={() => navigate({ name: 'accounts' })} title={who ? `Live game connection · playing as ${who}` : 'Live game connection'}>
       <span className={`pill-dot ${status.state === 'connected' && status.inMatch ? 'pulse' : ''}`} />
       {label}
     </button>
   );
+}
+
+function UpdatePill() {
+  const update = useStore((s) => s.update);
+  const navigate = useStore((s) => s.navigate);
+  if (update.state === 'available' || update.state === 'downloaded') {
+    return (
+      <div className="update-banner" title={update.state === 'downloaded' ? 'Restart to finish updating' : 'A new version is available'}>
+        <span className="clickable" onClick={() => navigate({ name: 'settings' })}>
+          Update {update.version}
+        </span>
+        <button onClick={() => window.rlj.installUpdate()}>{update.state === 'downloaded' ? 'Restart' : 'Install'}</button>
+      </div>
+    );
+  }
+  if (update.state === 'installing') return <div className="update-banner">Updating…</div>;
+  return null;
 }
 
 function Notifications() {
@@ -209,6 +233,7 @@ function TopBar() {
         ))}
       </div>
       <div className="spacer" />
+      <UpdatePill />
       <LivePill />
       <Notifications />
     </header>

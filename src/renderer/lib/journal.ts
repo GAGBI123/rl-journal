@@ -1,5 +1,6 @@
 // Pure operations on the journal data (no React). Mutating helpers take a draft copy.
-import type { Activity, AppData, Day, Entry, Measure, Season, Section, Settings, TimeUnit } from '../../shared/model';
+import { DATA_VERSION, type Activity, type AppData, type Day, type Entry, type Measure, type Season, type Section, type Settings, type TimeUnit } from '../../shared/model';
+import { DEFAULT_GAME_MODES, HONOR_DUEL_KEY, keyForLegacyName, playlistInfo, PRACTICE_MODE_NAMES } from '../../shared/playlists';
 import { addDays, diffDays, todayISO } from './dates';
 import { uid } from './format';
 
@@ -7,65 +8,95 @@ export const DEFAULT_SEASON_DAYS = 90;
 
 export const DEFAULT_SETTINGS: Settings = {
   favorites: ['training.totalTime', 'games.total', 'training.dailyAvg', 'games.byMode', 'streak.current'],
-  trackerPollMinutes: 5,
   liveGameEnabled: true,
   liveGamePort: 49124,
   ignorePrivateMatches: true,
-  countCasualAsRanked: false,
+  trackResultsGames: true,
+  trackResultsHonorDuel: true,
   systemNotifications: true,
   closeToTray: true,
   startWithWindows: false,
-  trackerBaseUrl: 'https://public-api.tracker.gg/v2',
+  autoUpdate: true,
 };
 
+/** Settings keys from older versions that no longer exist. */
+const REMOVED_SETTINGS = ['trackerPollMinutes', 'trackerBaseUrl', 'countCasualAsRanked'];
+
 export const SECTION_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#eab308', '#ec4899', '#14b8a6', '#ef4444'];
+
+/** Activity ids used by the built-in game modes (1.0 used act-1s/2s/3s for plain "1s"/"2s"/"3s"). */
+const GAME_MODE_IDS: Record<string, string> = {
+  'ranked-1s': 'act-1s',
+  'ranked-2s': 'act-2s',
+  'ranked-3s': 'act-3s',
+  'casual-1s': 'act-casual-1s',
+  'casual-2s': 'act-casual-2s',
+  'casual-3s': 'act-casual-3s',
+  'honor-duel': 'act-honor-duel',
+};
+
+function gameModeActivity(key: string, name: string, sectionId: string, order: number, now: string): Activity {
+  return {
+    id: GAME_MODE_IDS[key] ?? uid(),
+    sectionId,
+    name,
+    key,
+    defaultMeasure: 'amount',
+    defaultUnit: 'min',
+    builtIn: true,
+    order,
+    createdAt: now,
+  };
+}
 
 export function createDefaultData(): AppData {
   const now = new Date().toISOString();
   const training: Section = { id: 'sec-training', name: 'Training', color: '#3b82f6', builtIn: true, kind: 'training', order: 0 };
   const games: Section = { id: 'sec-games', name: 'Games', color: '#f97316', builtIn: true, kind: 'games', order: 1 };
-  const act = (id: string, sectionId: string, name: string, m: Measure): Activity => ({
-    id,
-    sectionId,
-    name,
-    defaultMeasure: m,
-    defaultUnit: 'min',
-    builtIn: true,
-    createdAt: now,
-  });
   return {
-    version: 1,
+    version: DATA_VERSION,
     seasons: [],
     sections: [training, games],
     activities: [
-      act('act-freeplay', training.id, 'Freeplay', 'time'),
-      act('act-1s', games.id, '1s', 'amount'),
-      act('act-2s', games.id, '2s', 'amount'),
-      act('act-3s', games.id, '3s', 'amount'),
+      {
+        id: 'act-freeplay',
+        sectionId: training.id,
+        name: 'Freeplay',
+        defaultMeasure: 'time',
+        defaultUnit: 'min',
+        builtIn: true,
+        order: 0,
+        createdAt: now,
+      },
+      ...DEFAULT_GAME_MODES.map((m, i) => gameModeActivity(m.key, m.name, games.id, i, now)),
     ],
     accounts: [],
     matches: [],
-    mmr: [],
     notifications: [],
     settings: { ...DEFAULT_SETTINGS },
   };
 }
 
-/** Fill in anything missing from older / imported files. */
+// ---------------------------------------------------------------- load + migrate
+
+/** Fill in anything missing from older / imported files and migrate them to the current schema. */
 export function normalizeData(raw: any): AppData {
   const base = createDefaultData();
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.seasons)) return base;
+  const fromVersion = typeof raw.version === 'number' ? raw.version : 1;
   const data: AppData = {
-    version: 1,
+    version: DATA_VERSION,
     seasons: raw.seasons ?? [],
     sections: Array.isArray(raw.sections) && raw.sections.length ? raw.sections : base.sections,
     activities: Array.isArray(raw.activities) ? raw.activities : base.activities,
     accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
     matches: Array.isArray(raw.matches) ? raw.matches : [],
-    mmr: Array.isArray(raw.mmr) ? raw.mmr : [],
     notifications: Array.isArray(raw.notifications) ? raw.notifications : [],
     settings: { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) },
   };
+  for (const k of REMOVED_SETTINGS) delete (data.settings as any)[k];
+  data.settings.favorites = (data.settings.favorites ?? []).filter((f) => typeof f === 'string' && !f.startsWith('mmr:'));
+
   for (const s of data.seasons) {
     s.days = (s.days ?? []).map((d: Day) => ({ ...d, entries: d.entries ?? [] }));
     sortDays(s);
@@ -74,13 +105,155 @@ export function normalizeData(raw: any): AppData {
   for (const sec of base.sections) {
     if (!data.sections.some((s) => s.kind === sec.kind)) data.sections.push(sec);
   }
-  for (const a of data.accounts) {
-    a.inGameNames = a.inGameNames ?? [];
-    a.primaryIds = a.primaryIds ?? [];
-    a.tracker = { ...(a.tracker ?? {}), enabled: !!a.tracker?.enabled, apiKey: a.tracker?.apiKey ?? '' };
+  data.accounts = data.accounts.map((a: any) => {
+    const names: string[] = Array.isArray(a.inGameNames) ? a.inGameNames : [];
+    // 1.0 accounts had a tracker.gg username; it doubles as an in-game name.
+    if (!names.length && typeof a.username === 'string' && a.username.trim()) names.push(a.username.trim());
+    return {
+      id: a.id ?? uid(),
+      label: a.label ?? 'Account',
+      platform: a.platform ?? 'other',
+      inGameNames: names,
+      primaryIds: Array.isArray(a.primaryIds) ? a.primaryIds : [],
+      liveGame: a.liveGame !== false,
+      color: a.color ?? SECTION_COLORS[0],
+      createdAt: a.createdAt ?? new Date().toISOString(),
+    };
+  });
+  for (const a of data.activities) {
+    a.createdAt = a.createdAt ?? new Date().toISOString();
   }
+  if (fromVersion < 2) migrateToV2(data);
+  ensureActivityOrder(data);
   return data;
 }
+
+function allEntries(data: AppData) {
+  const out: { season: Season; day: Day; entry: Entry }[] = [];
+  for (const season of data.seasons) for (const day of season.days) for (const entry of day.entries) out.push({ season, day, entry });
+  return out;
+}
+
+/** Move every entry and match of activity `from` to activity `to`, then delete `from`. */
+function mergeActivities(data: AppData, from: Activity, to: Activity) {
+  for (const { entry } of allEntries(data)) if (entry.activityId === from.id) entry.activityId = to.id;
+  for (const m of data.matches) if (m.activityId === from.id) m.activityId = to.id;
+  data.activities = data.activities.filter((a) => a.id !== from.id);
+}
+
+/**
+ * 1.0 → 1.1:
+ * - "1s/2s/3s" become "Ranked 1s/2s/3s"; Casual 1s/2s/3s and Honor Duel are added ("Playlist 53" becomes Honor Duel).
+ * - Games wrongly logged from freeplay/training are removed.
+ * - Same activity logged twice on one day is merged into one entry.
+ * - tracker.gg leftovers are dropped.
+ */
+function migrateToV2(data: AppData) {
+  const games = gamesSection(data);
+  const now = new Date().toISOString();
+
+  // Game mode keys + new names for the old plain modes.
+  for (const a of data.activities) {
+    if (a.sectionId !== games.id) continue;
+    const key = a.key ?? keyForLegacyName(a.name);
+    if (!key) continue;
+    a.key = key;
+    const def = DEFAULT_GAME_MODES.find((d) => d.key === key);
+    if (def && /^(1s|2s|3s|playlist \d+)$/i.test(a.name.trim())) a.name = def.name;
+    if (def) a.builtIn = true;
+  }
+
+  // The same mode/name twice in a section (e.g. "Honor Duel" + renamed "Playlist 53") becomes one activity.
+  for (const a of [...data.activities]) {
+    if (!data.activities.includes(a)) continue;
+    const twin = data.activities.find(
+      (b) =>
+        b !== a &&
+        b.sectionId === a.sectionId &&
+        ((a.key && b.key === a.key) || b.name.trim().toLowerCase() === a.name.trim().toLowerCase()),
+    );
+    if (twin) {
+      const keep = twin.builtIn && !a.builtIn ? twin : a;
+      mergeActivities(data, keep === a ? twin : a, keep);
+    }
+  }
+
+  // Add the default modes that are missing.
+  for (const def of DEFAULT_GAME_MODES) {
+    if (data.activities.some((a) => a.sectionId === games.id && a.key === def.key)) continue;
+    const act = gameModeActivity(def.key, def.name, games.id, 0, now);
+    if (data.activities.some((a) => a.id === act.id)) act.id = uid();
+    data.activities.push(act);
+  }
+
+  // Remove games that were logged from freeplay / training / offline (no online match id).
+  const bogus = data.matches.filter((m) => !m.guid || playlistInfo(m.playlistId).kind === 'practice');
+  if (bogus.length) {
+    const ids = new Set(bogus.map((m) => m.id));
+    for (const m of bogus) {
+      const day = data.seasons.find((s) => s.id === m.seasonId)?.days.find((d) => d.id === m.dayId);
+      const entry = day?.entries.find((e) => e.id === m.entryId);
+      if (!day || !entry || entry.measure !== 'amount') continue;
+      entry.amount = Math.max(0, (entry.amount ?? 0) - 1);
+      if (m.result === 'win' && entry.wins) entry.wins--;
+      if (m.result === 'loss' && entry.losses) entry.losses--;
+      if (entry.auto && !entry.amount) day.entries = day.entries.filter((e) => e !== entry);
+    }
+    data.matches = data.matches.filter((m) => !ids.has(m.id));
+    const used = new Set(allEntries(data).map((x) => x.entry.activityId));
+    data.activities = data.activities.filter(
+      (a) => !(a.sectionId === games.id && !a.builtIn && !used.has(a.id) && PRACTICE_MODE_NAMES.has(a.name.trim().toLowerCase())),
+    );
+  }
+
+  // Wins without losses meant "the rest were losses"; store both so merged entries add up.
+  const gameActs = new Set(data.activities.filter((a) => a.sectionId === games.id).map((a) => a.id));
+  for (const { entry } of allEntries(data)) {
+    if ((entry.auto as any)?.source && (entry.auto as any).source !== 'game') entry.auto = { source: 'game', accountId: entry.auto?.accountId };
+    if (entry.measure === 'amount' && gameActs.has(entry.activityId) && entry.wins !== undefined && entry.losses === undefined) {
+      entry.losses = Math.max(0, (entry.amount ?? 0) - entry.wins);
+    }
+  }
+
+  // One entry per activity per day.
+  for (const season of data.seasons) {
+    for (const day of season.days) {
+      const kept: Entry[] = [];
+      for (const e of day.entries) {
+        const target = kept.find((k) => k.activityId === e.activityId && k.measure === e.measure);
+        if (!target) {
+          kept.push(e);
+          continue;
+        }
+        mergeInto(target, e);
+        for (const m of data.matches) if (m.entryId === e.id) m.entryId = target.id;
+      }
+      day.entries = kept;
+    }
+  }
+
+  // Default order: built-in modes first (Ranked, Casual, Honor Duel), then the rest oldest → newest.
+  for (const section of data.sections) {
+    const acts = data.activities.filter((a) => a.sectionId === section.id);
+    const rank = (a: Activity) => {
+      const i = DEFAULT_GAME_MODES.findIndex((d) => d.key === a.key);
+      if (section.kind === 'games' && i >= 0) return i;
+      if (a.builtIn && section.kind !== 'games') return -1;
+      return 1000;
+    };
+    acts.sort((a, b) => rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt));
+    acts.forEach((a, i) => (a.order = i));
+  }
+}
+
+/** Give activities without a position one at the end of their section (newest last). */
+function ensureActivityOrder(data: AppData) {
+  const missing = data.activities.filter((a) => typeof a.order !== 'number' || !Number.isFinite(a.order));
+  missing.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const a of missing) a.order = nextActivityOrder(data, a.sectionId, a);
+}
+
+// ---------------------------------------------------------------- seasons & days
 
 export function sortDays(season: Season) {
   season.days.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -131,6 +304,8 @@ export function findDay(data: AppData, seasonId: string, dayId: string) {
   return findSeason(data, seasonId)?.days.find((d) => d.id === dayId);
 }
 
+// ---------------------------------------------------------------- sections & activities
+
 export function activityById(data: AppData, id: string) {
   return data.activities.find((a) => a.id === id);
 }
@@ -150,6 +325,34 @@ export function gamesSection(data: AppData) {
 
 export function sortedSections(data: AppData) {
   return [...data.sections].sort((a, b) => a.order - b.order);
+}
+
+/** A section's activities in the user's order. */
+export function sectionActivities(data: AppData, sectionId: string): Activity[] {
+  return data.activities
+    .filter((a) => a.sectionId === sectionId)
+    .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+}
+
+export function nextActivityOrder(data: AppData, sectionId: string, except?: Activity) {
+  const orders = data.activities
+    .filter((a) => a.sectionId === sectionId && a !== except && typeof a.order === 'number' && Number.isFinite(a.order))
+    .map((a) => a.order);
+  return orders.length ? Math.max(...orders) + 1 : 0;
+}
+
+/** Move an activity to position `index` inside its section and renumber the section. */
+export function moveActivity(data: AppData, activityId: string, index: number) {
+  const a = activityById(data, activityId);
+  if (!a) return;
+  const list = sectionActivities(data, a.sectionId).filter((x) => x.id !== a.id);
+  const at = Math.max(0, Math.min(list.length, index));
+  list.splice(at, 0, a);
+  list.forEach((x, i) => (x.order = i));
+}
+
+export function isHonorDuel(a: Activity | undefined) {
+  return a?.key === HONOR_DUEL_KEY;
 }
 
 /** Today's (or any date's) day in active seasons, newest season first. */
@@ -195,26 +398,83 @@ export function ensureSyncDay(data: AppData, date: string): { season: Season; da
   return { season, day: season.days.find((d) => d.date === date)!, created: true };
 }
 
+/** Find an activity by key (game modes) or name in a section, or create it at the end of the section. */
 export function findOrCreateActivity(
   data: AppData,
   sectionId: string,
   name: string,
   measure: Measure,
   unit: TimeUnit = 'min',
+  key?: string,
 ): Activity {
   const trimmed = name.trim();
-  const existing = data.activities.find((a) => a.sectionId === sectionId && a.name.toLowerCase() === trimmed.toLowerCase());
-  if (existing) return existing;
+  if (key) {
+    const byKey = data.activities.find((a) => a.sectionId === sectionId && a.key === key);
+    if (byKey) return byKey;
+  }
+  const existing = data.activities.find((a) => a.sectionId === sectionId && a.name.trim().toLowerCase() === trimmed.toLowerCase());
+  if (existing) {
+    if (key && !existing.key) existing.key = key;
+    return existing;
+  }
   const activity: Activity = {
     id: uid(),
     sectionId,
     name: trimmed,
+    key,
     defaultMeasure: measure,
     defaultUnit: unit,
+    order: nextActivityOrder(data, sectionId),
     createdAt: new Date().toISOString(),
   };
   data.activities.push(activity);
   return activity;
+}
+
+// ---------------------------------------------------------------- entries
+
+export type EntryInput = Omit<Entry, 'id' | 'createdAt'>;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Add `add` onto `target` (same activity + measure): times and amounts are summed, results are
+ * summed, descriptions are kept. Mixed minutes/hours end up in minutes.
+ */
+export function mergeInto(target: Entry, add: EntryInput | Entry) {
+  if (target.measure === 'time') {
+    target.minutes = round2((target.minutes ?? 0) + (add.minutes ?? 0));
+    if ((target.unit ?? 'min') !== (add.unit ?? 'min')) target.unit = 'min';
+  } else {
+    target.amount = (target.amount ?? 0) + (add.amount ?? 0);
+    if (add.wins !== undefined || add.losses !== undefined) {
+      target.wins = (target.wins ?? 0) + (add.wins ?? 0);
+      target.losses = (target.losses ?? 0) + (add.losses ?? 0);
+    }
+  }
+  const notes = [target.note, add.note].map((n) => n?.trim()).filter((n): n is string => !!n);
+  target.note = notes.length ? [...new Set(notes)].join('\n') : undefined;
+  if (add.auto) {
+    if (!target.auto) target.auto = { source: 'game', accountId: add.auto.accountId };
+    else if (target.auto.accountId !== add.auto.accountId) target.auto = { source: 'game' };
+  }
+}
+
+/** The day's entry that new values for this activity + measure are added to, if any. */
+export function findDayEntry(day: Day, activityId: string, measure: Measure, excludeId?: string) {
+  return day.entries.find((e) => e.id !== excludeId && e.activityId === activityId && e.measure === measure);
+}
+
+/** Add to the day's existing entry for the same activity and measure, or create a new one. */
+export function addToDay(day: Day, input: EntryInput): { entry: Entry; merged: boolean } {
+  const target = findDayEntry(day, input.activityId, input.measure);
+  if (target) {
+    mergeInto(target, input);
+    return { entry: target, merged: true };
+  }
+  const entry = newEntry(input);
+  day.entries.push(entry);
+  return { entry, merged: false };
 }
 
 export function entryValue(e: Entry, measure: Measure): number {
@@ -235,6 +495,6 @@ export function isToday(date: string) {
   return date === todayISO();
 }
 
-export function newEntry(partial: Omit<Entry, 'id' | 'createdAt'>): Entry {
+export function newEntry(partial: EntryInput): Entry {
   return { id: uid(), createdAt: new Date().toISOString(), ...partial };
 }

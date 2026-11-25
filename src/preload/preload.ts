@@ -15,7 +15,6 @@ const api = {
   openDataFolder: () => ipcRenderer.invoke('data:open-folder'),
   exportData: (json: string) => ipcRenderer.invoke('data:export', json),
   importData: () => ipcRenderer.invoke('data:import'),
-  trackerFetch: (req: unknown) => ipcRenderer.invoke('tracker:fetch', req),
   liveConfigure: (cfg: unknown) => ipcRenderer.invoke('live:configure', cfg),
   liveReady: () => ipcRenderer.invoke('live:ready'),
   onLiveStatus: on('live:status'),
@@ -28,6 +27,13 @@ const api = {
   notify: (n: { title: string; body: string }) => ipcRenderer.invoke('notify', n),
   applySettings: (s: unknown) => ipcRenderer.invoke('app:settings', s),
   version: () => ipcRenderer.invoke('app:version'),
+  appInfo: () => ipcRenderer.invoke('app:info'),
+  platform: process.platform,
+  updateStatus: () => ipcRenderer.invoke('update:get'),
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: on('update:status'),
+  onBeforeUpdate: on('app:before-update'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
 };
 

@@ -1,0 +1,61 @@
+# Builds the Windows installer and the Linux AppImage on every version tag (v1.2.3).
+# The files are uploaded as workflow artifacts; `npm run release` publishes them.
+name: Build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+          - os: ubuntu-22.04
+            target: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
+
+      - name: Package
+        run: npx electron-builder --${{ matrix.target }} --x64 --publish never
+        env:
+          # Only used to raise GitHub download rate limits for build tools.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke test (start the AppImage headless)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          chmod +x release/RL-Journal-x86_64.AppImage
+          export RLJ_SMOKE_TEST=1 RLJ_USER_DATA="$RUNNER_TEMP/rlj-smoke"
+          timeout 90 xvfb-run -a release/RL-Journal-x86_64.AppImage --no-sandbox 2>&1 | tee smoke.log || true
+          grep -q RLJ_SMOKE_OK smoke.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rl-journal-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/*.AppImage
+            release/latest*.yml

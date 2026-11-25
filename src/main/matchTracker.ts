@@ -13,12 +13,17 @@ interface CurrentMatch {
   winnerTeamNum?: number;
   emitted: boolean;
   isReplay: boolean;
+  /** How often each player was the camera target during live play (= the player on this PC). */
+  targetVotes: Map<string, { name: string; teamNum: number; votes: number }>;
+  fallbackGoals: Record<number, number>;
 }
 
 export interface TrackerEvents {
   onMatchFinished?: (result: LiveMatchResult) => void;
   onPlayers?: (players: { name: string; primaryId?: string }[]) => void;
   onMatchState?: (inMatch: boolean, playlistId?: number) => void;
+  /** The player controlling the game on this PC, as soon as it is known (also in freeplay). */
+  onLocalPlayer?: (player: { name: string; primaryId?: string }) => void;
 }
 
 const n = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -78,8 +83,9 @@ export function parseEnvelope(raw: string): { Event: string; Data: any }[] {
 
 export class MatchTracker {
   private current: CurrentMatch | null = null;
-  private emittedGuids: string[] = [];
+  private emittedKeys: string[] = [];
   private announcedPlayers = false;
+  private lastLocal = '';
 
   constructor(private events: TrackerEvents = {}) {}
 
@@ -93,6 +99,8 @@ export class MatchTracker {
       overtime: false,
       emitted: false,
       isReplay: false,
+      targetVotes: new Map(),
+      fallbackGoals: {},
     };
     this.events.onMatchState?.(true);
     return this.current;
@@ -143,9 +151,13 @@ export class MatchTracker {
         return null;
       }
       case 'UpdateState': {
-        const m = this.ensure(guid);
+        let m = this.ensure(guid);
         const game = data?.Game ?? {};
-        if (typeof game.PlaylistId === 'number') m.playlistId = game.PlaylistId;
+        if (typeof game.PlaylistId === 'number') {
+          // Same lobby, different playlist after the match ended (e.g. an Honor Duel): a new game.
+          if (m.emitted && m.playlistId !== undefined && m.playlistId !== game.PlaylistId) m = this.newMatch(guid);
+          m.playlistId = game.PlaylistId;
+        }
         if (game.Arena) m.arena = String(game.Arena);
         if (game.bReplay && !m.started) m.isReplay = true;
         m.overtime = m.overtime || !!game.bOvertime;
@@ -172,6 +184,19 @@ export class MatchTracker {
             touches: typeof p.Touches === 'number' ? p.Touches : undefined,
           });
         }
+        const target = game.bHasTarget ? game.Target : undefined;
+        if (target && typeof target.Name === 'string' && target.Name && !game.bReplay && !m.isReplay) {
+          const key = `${target.Name}|${n(target.TeamNum, -1)}`;
+          const v = m.targetVotes.get(key) ?? { name: target.Name, teamNum: n(target.TeamNum, -1), votes: 0 };
+          v.votes++;
+          m.targetVotes.set(key, v);
+          const local = this.localPlayer(m);
+          const id = local ? `${local.name}|${local.primaryId ?? ''}` : '';
+          if (local && id !== this.lastLocal) {
+            this.lastLocal = id;
+            this.events.onLocalPlayer?.({ name: local.name, primaryId: local.primaryId });
+          }
+        }
         if (!this.announcedPlayers && m.players.size > 0) {
           this.announcedPlayers = true;
           this.events.onPlayers?.([...m.players.values()].map((p) => ({ name: p.name, primaryId: p.primaryId })));
@@ -180,14 +205,10 @@ export class MatchTracker {
         return null;
       }
       case 'GoalScored': {
-        // Keep team scores roughly in sync even when UpdateState is disabled.
+        // Fallback score keeping for when UpdateState never arrives.
         const m = this.ensure(guid);
         const team = data?.Scorer?.TeamNum;
-        if (typeof team === 'number' && !m.teams.size) {
-          // Only used as a fallback when no UpdateState arrives.
-          (m as any)._goals = (m as any)._goals ?? {};
-          (m as any)._goals[team] = ((m as any)._goals[team] ?? 0) + 1;
-        }
+        if (typeof team === 'number') m.fallbackGoals[team] = (m.fallbackGoals[team] ?? 0) + 1;
         return null;
       }
       case 'MatchEnded': {
@@ -198,6 +219,7 @@ export class MatchTracker {
       case 'MatchDestroyed': {
         const m = this.current;
         let result: LiveMatchResult | null = null;
+        // Leaving a started online match before it ended counts as a loss.
         if (m && !m.emitted && m.started) result = this.finish(m, true);
         this.current = null;
         this.events.onMatchState?.(false);
@@ -208,18 +230,30 @@ export class MatchTracker {
     }
   }
 
+  /** The player the camera followed most during live play: that's whoever plays on this PC. */
+  private localPlayer(m: CurrentMatch): { name: string; primaryId?: string; teamNum: number } | undefined {
+    let best: { name: string; teamNum: number; votes: number } | undefined;
+    for (const v of m.targetVotes.values()) if (!best || v.votes > best.votes) best = v;
+    if (!best) return undefined;
+    const b = best;
+    const players = [...m.players.values()];
+    const p = players.find((x) => x.name === b.name && x.teamNum === b.teamNum) ?? players.find((x) => x.name === b.name);
+    return { name: b.name, primaryId: p?.primaryId, teamNum: p && p.teamNum >= 0 ? p.teamNum : b.teamNum };
+  }
+
   private finish(m: CurrentMatch, leftEarly: boolean): LiveMatchResult | null {
     if (m.emitted || m.isReplay) return null;
     m.emitted = true;
-    if (m.guid) {
-      if (this.emittedGuids.includes(m.guid)) return null;
-      this.emittedGuids.push(m.guid);
-      if (this.emittedGuids.length > 100) this.emittedGuids.shift();
-    }
+    // Only online / LAN matches carry a match id: freeplay, training and offline games never count.
+    if (!m.guid) return null;
+    // An Honor Duel can follow a match in the same lobby, so the playlist is part of the key.
+    const key = `${m.guid}|${m.playlistId ?? ''}`;
+    if (this.emittedKeys.includes(key)) return null;
+    this.emittedKeys.push(key);
+    if (this.emittedKeys.length > 100) this.emittedKeys.shift();
     let teams = [...m.teams.values()];
-    const fallbackGoals = (m as any)._goals as Record<number, number> | undefined;
-    if (!teams.length && fallbackGoals) {
-      teams = [0, 1].map((t) => ({ teamNum: t, score: fallbackGoals[t] ?? 0 }));
+    if (!teams.length && Object.keys(m.fallbackGoals).length) {
+      teams = [0, 1].map((t) => ({ teamNum: t, score: m.fallbackGoals[t] ?? 0 }));
     }
     const result: LiveMatchResult = {
       guid: m.guid,
@@ -231,6 +265,7 @@ export class MatchTracker {
       overtime: m.overtime,
       teams,
       players: [...m.players.values()],
+      localPlayer: this.localPlayer(m),
     };
     this.events.onMatchFinished?.(result);
     return result;
