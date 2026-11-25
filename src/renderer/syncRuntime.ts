@@ -18,6 +18,7 @@ import {
 } from './lib/journal';
 import { startRoutineItemTimer, type RoutineItemRef } from './lib/routineTimer';
 import { fmtMinutes } from './lib/format';
+import { todayISO } from './lib/dates';
 import { playChime } from './lib/sound';
 import { flushSave, useStore } from './store';
 
@@ -44,6 +45,9 @@ export function startSyncRuntime() {
   started = true;
   // Before liveReady(): the main process then sends any timer that finished while the app was loading.
   startTimers();
+  // "End days yourself": the first time, the current day is today.
+  const s0 = useStore.getState().data.settings;
+  if (s0.endDayManually && !s0.openDay) useStore.getState().mutate((d) => void (d.settings.openDay = todayISO()));
 
   window.rlj.onLiveStatus((s) => {
     useStore.setState({ liveStatus: s });

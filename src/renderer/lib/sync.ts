@@ -4,7 +4,7 @@ import type { Account, AppData, AppNotification, LiveMatchResult, LocalPlayer, M
 import { playlistInfo } from '../../shared/playlists';
 import { isoFromTimestamp } from './dates';
 import { uid } from './format';
-import { addToDay, dayNumber, ensureSyncDay, findOrCreateActivity, gamesSection, SECTION_COLORS, seasonLabel } from './journal';
+import { addToDay, currentDate, dayNumber, ensureSyncDay, findOrCreateActivity, gamesSection, SECTION_COLORS, seasonLabel } from './journal';
 
 export interface SyncOutcome {
   logged: boolean;
@@ -52,7 +52,11 @@ export function platformFromId(primaryId?: string): Platform {
  * Who played this match on this PC. The game reports the player the camera follows (you),
  * which is matched to an account. A player seen for the first time becomes a new account.
  */
-function resolveMe(data: AppData, result: LiveMatchResult): { account?: Account; player?: MatchPlayer; created?: boolean } {
+function resolveMe(
+  data: AppData,
+  result: LiveMatchResult,
+  honorDuel = false,
+): { account?: Account; player?: MatchPlayer; created?: boolean; watched?: string } {
   const local = result.localPlayer;
   if (local) {
     const player =
@@ -61,6 +65,12 @@ function resolveMe(data: AppData, result: LiveMatchResult): { account?: Account;
     const id = local.primaryId ?? player.primaryId;
     let account = accountForPlayer(data.accounts, { name: local.name, primaryId: id });
     let created = false;
+    // Honor Duels are played in a lobby after a match, where friends watch them. The camera then
+    // follows one of the players, so an unknown player there is someone else, not a new account.
+    if (!account && honorDuel && data.accounts.some((a) => a.liveGame)) {
+      const me = identifyMe(data.accounts, result.players);
+      return me ? { account: me.account, player: me.player } : { watched: local.name || 'Someone else' };
+    }
     if (!account) {
       account = {
         id: uid(),
@@ -91,13 +101,24 @@ export function applyLiveMatch(data: AppData, result: LiveMatchResult): SyncOutc
   const info = playlistInfo(result.playlistId);
   // Only online / LAN matches have a match id. Freeplay, training and offline games never count.
   if (!result.guid || info.kind === 'practice') return { logged: false };
+  // Watching someone else's game (e.g. an Honor Duel between two others in the lobby) never counts.
+  if (result.spectated) return { logged: false };
   if (info.kind === 'private' && settings.ignorePrivateMatches) return { logged: false };
   if (data.matches.some((m) => m.guid === result.guid && m.playlistId === result.playlistId)) return { logged: false };
 
   if (result.players.length) {
     settings.lastMatchPlayers = result.players.map((p) => ({ name: p.name, primaryId: p.primaryId }));
   }
-  const { account, player, created } = resolveMe(data, result);
+  const { account, player, created, watched } = resolveMe(data, result, !!info.honorDuel);
+  if (watched) {
+    // Only in the bell, no pop-up: most likely the user was watching a friend's duel.
+    notify(data, {
+      kind: 'info',
+      title: 'Honor Duel not logged',
+      body: `${watched} played it, and that's not one of your accounts, so you were probably watching. If it was you, add that name to your account in Accounts.`,
+    });
+    return { logged: false };
+  }
   if (account && !account.liveGame) return { logged: false };
   if (account && player) {
     const local = result.localPlayer;
@@ -119,7 +140,10 @@ export function applyLiveMatch(data: AppData, result: LiveMatchResult): SyncOutc
   const trackResults = info.honorDuel ? settings.trackResultsHonorDuel : settings.trackResultsGames;
   if (!trackResults) outcome = 'unknown';
 
-  const date = isoFromTimestamp(result.endedAt);
+  // The current day: with "End days yourself" a game after midnight still goes to the day that's open.
+  const played = isoFromTimestamp(result.endedAt);
+  const date = currentDate(settings, played);
+  if (settings.endDayManually) settings.openDay = date;
   const target = ensureSyncDay(data, date);
   if (!target) {
     const n = notify(data, {
@@ -164,10 +188,11 @@ export function applyLiveMatch(data: AppData, result: LiveMatchResult): SyncOutc
   const res =
     outcome === 'win' ? `Win${score}` : outcome === 'loss' ? (result.leftEarly ? 'Left early (loss)' : `Loss${score}`) : score ? `Score${score}` : 'Game';
   const who = account ? ` · ${account.label}` : '';
+  const open = date < played ? ' (the day is still open)' : date > played ? ' (next day: today was ended)' : '';
   const n = notify(data, {
     kind: 'sync',
     title: `${activity.name} game logged`,
-    body: `${res}${who} → ${seasonLabel(target.season)}, Day ${dayNumber(target.season, target.day)}${target.created ? ' (day added)' : ''}`,
+    body: `${res}${who} → ${seasonLabel(target.season)}, Day ${dayNumber(target.season, target.day)}${target.created ? ' (day added)' : ''}${open}`,
     target: { seasonId: target.season.id, dayId: target.day.id },
   });
   if (created && account) {

@@ -19,7 +19,7 @@ import {
   sectionLabel,
   sortedSections,
 } from '../lib/journal';
-import { relativeTime } from '../lib/dates';
+import { relativeTime, todayISO } from '../lib/dates';
 import { ShortcutInput } from '../components/ShortcutInput';
 import { uid } from '../lib/format';
 import type { Measure, Section } from '../../shared/model';
@@ -555,6 +555,23 @@ export function SettingsPage() {
         <h2>Sync & notifications</h2>
       </div>
       <div className="card">
+        <Toggle
+          title="End days yourself"
+          desc={
+            settings.endDayManually
+              ? 'Games are logged to the current day until you press End day (in the sidebar or on the day), so a session that goes past midnight stays on the day it started. A day left open for a whole extra day ends by itself.'
+              : 'Off: a new day starts at midnight.'
+          }
+          on={settings.endDayManually}
+          onChange={(v) =>
+            mutate((d) => {
+              d.settings.endDayManually = v;
+              // Start from today when it's switched on.
+              if (v) d.settings.openDay = todayISO();
+              delete d.settings.endedDay;
+            })
+          }
+        />
         <Toggle title="Desktop notifications" desc="Show a notification when a game is logged automatically." on={settings.systemNotifications} onChange={(v) => set('systemNotifications', v)} />
         <Toggle title="Keep running in the tray when closed" desc="Needed for automatic logging while the window is closed." on={settings.closeToTray} onChange={(v) => set('closeToTray', v)} />
         <Toggle

@@ -81,8 +81,13 @@ export function parseEnvelope(raw: string): { Event: string; Data: any }[] {
   }
 }
 
+const samePlayer = (a: { name: string; primaryId?: string }, b: { name: string; primaryId?: string }) =>
+  a.primaryId && b.primaryId ? a.primaryId.toLowerCase() === b.primaryId.toLowerCase() : !!a.name && a.name === b.name;
+
 export class MatchTracker {
   private current: CurrentMatch | null = null;
+  /** Who played on this PC in the last game of a lobby: a later game there without them (an Honor Duel of two others) was only watched. */
+  private lobby: { guid: string; player: { name: string; primaryId?: string } } | null = null;
   private emittedKeys: string[] = [];
   private announcedPlayers = false;
   private lastLocal = '';
@@ -190,7 +195,7 @@ export class MatchTracker {
           const v = m.targetVotes.get(key) ?? { name: target.Name, teamNum: n(target.TeamNum, -1), votes: 0 };
           v.votes++;
           m.targetVotes.set(key, v);
-          const local = this.localPlayer(m);
+          const local = this.watching(m) ? undefined : this.localPlayer(m);
           const id = local ? `${local.name}|${local.primaryId ?? ''}` : '';
           if (local && id !== this.lastLocal) {
             this.lastLocal = id;
@@ -230,6 +235,20 @@ export class MatchTracker {
     }
   }
 
+  /**
+   * A later game in the same lobby (same match id) that the player from this PC isn't in: they're
+   * watching it, like an Honor Duel between two others. The camera then follows someone else.
+   */
+  private watching(m: CurrentMatch): boolean {
+    const lobby = this.lobby;
+    if (!lobby || !m.guid || m.guid !== lobby.guid) return false;
+    const all = [...m.players.values()];
+    // Only the players on a team play; anyone else in the list is watching too.
+    const onTeam = all.filter((p) => p.teamNum === 0 || p.teamNum === 1);
+    const playing = onTeam.length ? onTeam : all;
+    return playing.length > 0 && !playing.some((p) => samePlayer(p, lobby.player));
+  }
+
   /** The player the camera followed most during live play: that's whoever plays on this PC. */
   private localPlayer(m: CurrentMatch): { name: string; primaryId?: string; teamNum: number } | undefined {
     let best: { name: string; teamNum: number; votes: number } | undefined;
@@ -251,6 +270,9 @@ export class MatchTracker {
     if (this.emittedKeys.includes(key)) return null;
     this.emittedKeys.push(key);
     if (this.emittedKeys.length > 100) this.emittedKeys.shift();
+    const spectated = this.watching(m);
+    const localPlayer = spectated ? undefined : this.localPlayer(m);
+    if (localPlayer) this.lobby = { guid: m.guid, player: { name: localPlayer.name, primaryId: localPlayer.primaryId } };
     let teams = [...m.teams.values()];
     if (!teams.length && Object.keys(m.fallbackGoals).length) {
       teams = [0, 1].map((t) => ({ teamNum: t, score: m.fallbackGoals[t] ?? 0 }));
@@ -265,7 +287,8 @@ export class MatchTracker {
       overtime: m.overtime,
       teams,
       players: [...m.players.values()],
-      localPlayer: this.localPlayer(m),
+      localPlayer,
+      ...(spectated ? { spectated: true } : {}),
     };
     this.events.onMatchFinished?.(result);
     return result;

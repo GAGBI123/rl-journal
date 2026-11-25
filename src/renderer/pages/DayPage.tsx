@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, ListChecks, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
+import { ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, ListChecks, Moon, NotebookPen, Pencil, Radio, RotateCcw, Trash2, Trophy, Zap } from 'lucide-react';
 import { useStore } from '../store';
-import { activityById, dayNumber, findSeason, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
+import { activityById, canEndDay, currentDate, dayNumber, findSeason, reopenableDate, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
 import { formatLongDate, todayISO } from '../lib/dates';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import { daySummary } from '../lib/stats';
@@ -9,6 +9,7 @@ import { EntryForm } from '../components/EntryForm';
 import { confirmDialog, EmptyState, Modal } from '../components/ui';
 import { DayRoutines, StartRoutineModal } from '../components/DayRoutines';
 import { RunningTimerCard } from '../components/TimerPill';
+import { endCurrentDay, MoveEntryModal, reopenEndedDay } from '../components/DayTools';
 import type { Entry } from '../../shared/model';
 
 export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }) {
@@ -20,6 +21,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   const [editing, setEditing] = useState<Entry | null>(null);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [pickRoutine, setPickRoutine] = useState(false);
+  const [moving, setMoving] = useState<Entry | null>(null);
 
   const groups = useMemo(() => {
     if (!day) return [];
@@ -42,7 +44,11 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   const idx = season.days.findIndex((d) => d.id === day.id);
   const prev = season.days[idx - 1];
   const next = season.days[idx + 1];
-  const isToday = day.date === todayISO();
+  // The current day (games are logged to it). With "End days yourself" it can still be yesterday after midnight.
+  const calendarToday = todayISO();
+  const isCurrent = season.status === 'active' && day.date === currentDate(data.settings, calendarToday);
+  const endable = isCurrent && canEndDay(data.settings, calendarToday);
+  const reopenable = season.status === 'active' && reopenableDate(data.settings, calendarToday) === day.date;
   const sum = daySummary(data, day);
   // Per-day choice: show or hide this day's wins / losses.
   const showRecord = !day.hideRecord;
@@ -93,7 +99,12 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
         <div>
           <div className="row" style={{ gap: 12 }}>
             <h1>Day {dayNumber(season, day)}</h1>
-            {isToday && <span className="badge blue">Today</span>}
+            {isCurrent && (
+              <span className="badge blue" title={data.settings.endDayManually ? 'Games are logged to this day until you end it' : undefined}>
+                {day.date === calendarToday ? 'Today' : 'Current day'}
+              </span>
+            )}
+            {reopenable && <span className="badge done">Day ended</span>}
             {season.status === 'closed' && <span className="badge done">Season completed</span>}
           </div>
           <div className="subtitle">
@@ -104,6 +115,16 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
           </div>
         </div>
         <div className="actions">
+          {endable && (
+            <button className="btn" onClick={() => void endCurrentDay()} title="Done for the day: games you play from now on go to the next day">
+              <Moon size={16} /> End day
+            </button>
+          )}
+          {reopenable && (
+            <button className="btn" onClick={reopenEndedDay} title="Log games to this day again">
+              <RotateCcw size={16} /> Reopen day
+            </button>
+          )}
           <button className="btn" onClick={() => setPickRoutine(true)} title="Start one of your training routines on this day">
             <ListChecks size={16} /> Start routine
           </button>
@@ -227,6 +248,9 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                         {e.measure === 'amount' && section.kind === 'games' && <div className="tiny muted" style={{ fontWeight: 500 }}>games</div>}
                       </div>
                       <div className="e-actions">
+                        <button className="icon-btn" title="Move to another day" aria-label="Move entry to another day" onClick={() => setMoving(e)}>
+                          <ArrowRightLeft size={15} />
+                        </button>
                         <button className="icon-btn" title="Edit" aria-label="Edit entry" onClick={() => setEditing(e)}>
                           <Pencil size={15} />
                         </button>
@@ -318,6 +342,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
       </div>
 
       {pickRoutine && <StartRoutineModal season={season} day={day} onClose={() => setPickRoutine(false)} />}
+      {moving && <MoveEntryModal season={season} day={day} entry={moving} onClose={() => setMoving(null)} />}
       {editing && (
         <Modal title="Edit entry" onClose={() => setEditing(null)}>
           <EntryForm season={season} day={day} editing={editing} onDone={() => setEditing(null)} />

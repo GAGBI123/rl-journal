@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timerFinishHotkey: 'Control+Alt+O',
   timerSound: true,
   dayMatchesOpen: true,
+  endDayManually: true,
 };
 
 /** Settings keys from older versions that no longer exist. */
@@ -590,6 +591,51 @@ export function anyDayForDate(data: AppData, date: string): { season: Season; da
   return null;
 }
 
+// ---------------------------------------------------------------- the current day
+
+/**
+ * The date of the current day: games are logged to it and the app shows it as today. With
+ * "End days yourself" (the default) it stays until the user ends it, so playing past midnight still
+ * counts for the day the session started. A day left open for a whole extra day moves on by itself
+ * (nobody plays that long in one go), and with the setting off a new day starts at midnight.
+ */
+export function currentDate(settings: Settings, today = todayISO()): string {
+  const open = settings.endDayManually ? settings.openDay : undefined;
+  if (!open || diffDays(open, today) >= 2 || diffDays(today, open) > 1) return today;
+  return open;
+}
+
+/** The current day can be ended once its date has come (not when it's already tomorrow's day). */
+export function canEndDay(settings: Settings, today = todayISO()) {
+  return settings.endDayManually && currentDate(settings, today) <= today;
+}
+
+/** End the current day: from now on games go to the next day. Returns the new current date. */
+export function endDay(data: AppData, today = todayISO()): string | null {
+  const s = data.settings;
+  if (!canEndDay(s, today)) return null;
+  const ended = currentDate(s, today);
+  s.endedDay = ended;
+  s.openDay = addDays(ended, 1);
+  return s.openDay;
+}
+
+/** The day the user just ended, while it can still be reopened (it's the day before the current one). */
+export function reopenableDate(settings: Settings, today = todayISO()): string | null {
+  const ended = settings.endDayManually ? settings.endedDay : undefined;
+  if (!ended || diffDays(ended, today) > 1) return null;
+  return addDays(currentDate(settings, today), -1) === ended ? ended : null;
+}
+
+/** Make the day that was just ended the current day again. */
+export function reopenDay(data: AppData, today = todayISO()): boolean {
+  const date = reopenableDate(data.settings, today);
+  if (!date) return false;
+  data.settings.openDay = date;
+  delete data.settings.endedDay;
+  return true;
+}
+
 /**
  * Find the day sync results go to. If an active season has started but has no day for
  * that date (e.g. it ran past 90 days), the missing days are appended up to that date.
@@ -691,6 +737,105 @@ export function addToDay(day: Day, input: EntryInput): { entry: Entry; merged: b
   const entry = newEntry(input);
   day.entries.push(entry);
   return { entry, merged: false };
+}
+
+/** What part of an entry to move to another day (all of it when left out). */
+export interface MovePart {
+  minutes?: number;
+  amount?: number;
+  wins?: number;
+  losses?: number;
+  /** Tracked matches of the entry that go along with the moved games. */
+  matchIds?: string[];
+}
+
+/**
+ * Move an entry, or part of it, to another day. It's added to that day's entry for the same
+ * activity (one entry per activity per day) and the tracked matches it moves go along.
+ * Returns the entry it ended up in on the other day.
+ */
+export function moveEntry(
+  data: AppData,
+  from: { seasonId: string; dayId: string },
+  entryId: string,
+  to: { seasonId: string; dayId: string },
+  part?: MovePart,
+): Entry | null {
+  const src = findDay(data, from.seasonId, from.dayId);
+  const toSeason = findSeason(data, to.seasonId);
+  const dst = toSeason?.days.find((d) => d.id === to.dayId);
+  const entry = src?.entries.find((e) => e.id === entryId);
+  if (!src || !dst || !toSeason || !entry || src === dst) return null;
+  const own = data.matches.filter((m) => m.entryId === entry.id);
+  const upTo = (v: number | undefined, max: number, all: number) => Math.min(max, Math.max(0, round2(v ?? all)));
+  const input: EntryInput = { activityId: entry.activityId, measure: entry.measure };
+  let whole: boolean;
+  let moving = own;
+  if (entry.measure === 'time') {
+    const total = entry.minutes ?? 0;
+    const m = upTo(part?.minutes, total, total);
+    whole = m >= total;
+    if (!whole && m <= 0) return null;
+    input.minutes = m;
+    if (!whole) entry.minutes = round2(total - m);
+  } else {
+    const total = entry.amount ?? 0;
+    const a = upTo(part?.amount, total, total);
+    whole = a >= total;
+    if (!whole && a <= 0) return null;
+    input.amount = a;
+    if (entry.wins !== undefined || entry.losses !== undefined) {
+      const w = whole ? entry.wins ?? 0 : Math.min(a, upTo(part?.wins, entry.wins ?? 0, 0));
+      const l = whole ? entry.losses ?? 0 : Math.min(a - w, upTo(part?.losses, entry.losses ?? 0, 0));
+      input.wins = w;
+      input.losses = l;
+      if (!whole) {
+        entry.wins = (entry.wins ?? 0) - w;
+        entry.losses = (entry.losses ?? 0) - l;
+      }
+    }
+    if (!whole) {
+      const ids = new Set(part?.matchIds ?? []);
+      moving = own.filter((m) => ids.has(m.id)).slice(0, a);
+      entry.amount = total - a;
+    }
+  }
+  if (whole) {
+    input.note = entry.note;
+    src.entries = src.entries.filter((e) => e !== entry);
+  }
+  if (entry.auto && (whole || moving.length)) input.auto = { ...entry.auto };
+  const { entry: target } = addToDay(dst, input);
+  for (const m of moving) {
+    m.seasonId = toSeason.id;
+    m.dayId = dst.id;
+    m.date = dst.date;
+    m.entryId = target.id;
+  }
+  trimRoutineLogs(src, entry.activityId, entry.measure);
+  return target;
+}
+
+/** After work left a day, its routine items keep only what the day still has (and open again if that's not enough). */
+function trimRoutineLogs(day: Day, activityId: string, measure: Measure) {
+  const items = (day.routines ?? []).flatMap((r) => r.items).filter((i) => i.activityId === activityId && itemMeasure(i) === measure);
+  if (!items.length) return;
+  const entry = findDayEntry(day, activityId, measure);
+  let left = entry ? entryValue(entry, measure) : 0;
+  for (const i of items) {
+    const own = ownLogged(i);
+    const keep = Math.min(own, left);
+    left = round2(left - keep);
+    if (keep >= own) continue;
+    if (measure === 'amount') i.loggedAmount = keep;
+    else i.loggedMinutes = keep;
+    if (!keep) {
+      delete i.loggedAmount;
+      delete i.loggedMinutes;
+    }
+    // Done again right away if what the day still has covers it.
+    i.done = false;
+  }
 }
 
 export function entryValue(e: Entry, measure: Measure): number {

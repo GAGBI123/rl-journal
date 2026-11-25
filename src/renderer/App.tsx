@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, BarChart3, Bell, CheckCircle2, House, Info, Link2, ListChecks, Settings, TriangleAlert, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, Bell, CheckCircle2, House, Info, Link2, ListChecks, Moon, RotateCcw, Settings, TriangleAlert, X } from 'lucide-react';
 import { useStore, type View } from './store';
 import { ConfirmHost } from './components/ui';
 import { TimerPill } from './components/TimerPill';
@@ -10,7 +10,8 @@ import { StatsPage } from './pages/StatsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { RoutinesPage } from './pages/RoutinesPage';
-import { dayForDate, dayNumber, findSeason, seasonLabel } from './lib/journal';
+import { canEndDay, currentDate, dayForDate, dayNumber, findSeason, reopenableDate, seasonLabel } from './lib/journal';
+import { endCurrentDay, reopenEndedDay } from './components/DayTools';
 import { relativeTime, todayISO } from './lib/dates';
 import { playlistInfo } from '../shared/playlists';
 import { accountForPlayer } from './lib/sync';
@@ -19,7 +20,11 @@ function Sidebar() {
   const view = useStore((s) => s.view);
   const navigate = useStore((s) => s.navigate);
   const data = useStore((s) => s.data);
-  const today = dayForDate(data, todayISO());
+  const calendarToday = todayISO();
+  const cur = currentDate(data.settings, calendarToday);
+  const today = dayForDate(data, cur);
+  const endable = canEndDay(data.settings, calendarToday);
+  const reopenable = !endable && reopenableDate(data.settings, calendarToday);
   const items: { icon: typeof House; label: string; view: View; match: View['name'][] }[] = [
     { icon: House, label: 'Seasons', view: { name: 'home' }, match: ['home', 'season', 'day'] },
     { icon: ListChecks, label: 'Routines', view: { name: 'routines' }, match: ['routines'] },
@@ -55,15 +60,25 @@ function Sidebar() {
           <button
             className="season-mini"
             onClick={() => navigate({ name: 'day', seasonId: today.season.id, dayId: today.day.id })}
-            title="Open today"
+            title={cur === calendarToday ? 'Open today' : 'Open the current day (games are logged to it until you end it)'}
           >
-            <div className="label">Today</div>
+            <div className="label">{cur === calendarToday ? 'Today' : 'Current day'}</div>
             <div className="title">
               {seasonLabel(today.season)} · Day {dayNumber(today.season, today.day)}
             </div>
             <div className="progress">
               <div style={{ width: `${Math.min(100, (dayNumber(today.season, today.day) / Math.max(1, today.season.days.length)) * 100)}%` }} />
             </div>
+          </button>
+        )}
+        {today && endable && (
+          <button className="btn small end-day-btn" onClick={() => void endCurrentDay()} title="Done for the day: games you play from now on go to the next day">
+            <Moon size={14} /> End day
+          </button>
+        )}
+        {today && reopenable && (
+          <button className="btn small ghost end-day-btn" onClick={reopenEndedDay} title="Log games to the day you ended again">
+            <RotateCcw size={14} /> Reopen previous day
           </button>
         )}
       </div>

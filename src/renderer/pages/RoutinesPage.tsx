@@ -6,6 +6,7 @@ import { confirmDialog, EmptyState, Field, Modal, NumberInput } from '../compone
 import {
   activityById,
   createRoutine,
+  currentDate,
   dayForDate,
   findOrCreateActivity,
   findSeason,
@@ -20,7 +21,6 @@ import {
   tidyItem,
 } from '../lib/journal';
 import { uid } from '../lib/format';
-import { todayISO } from '../lib/dates';
 import { afterRoutineAdded } from '../lib/routineTimer';
 import type { Routine, RoutineItem, RoutineItemKind } from '../../shared/model';
 
@@ -46,7 +46,7 @@ export function RoutinesPage() {
   const navigate = useStore((s) => s.navigate);
   const toast = useStore((s) => s.toast);
   const [editing, setEditing] = useState<Routine | 'new' | null>(null);
-  const today = dayForDate(data, todayISO());
+  const today = dayForDate(data, currentDate(data.settings));
 
   const startToday = async (r: Routine, runNow: boolean) => {
     if (!today) {

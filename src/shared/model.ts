@@ -223,6 +223,15 @@ export interface Settings {
   timerSound: boolean;
   /** Day page: the tracked matches card is open (remembered when the user opens or closes it). */
   dayMatchesOpen: boolean;
+  /**
+   * Days end when the user presses "End day" (default), not at midnight: games keep going to the
+   * current day, so a session past midnight counts for the day it started.
+   */
+  endDayManually: boolean;
+  /** With endDayManually: the date of the day games are logged to (the current day). */
+  openDay?: string;
+  /** The date the user last ended with "End day" (it can be reopened while it's the day before the current one). */
+  endedDay?: string;
   /** Players seen in the last live match, used for "that's me" linking. */
   lastMatchPlayers?: LocalPlayer[];
   /** The player last seen controlling the game on this PC. */
@@ -279,6 +288,11 @@ export interface LiveMatchResult {
   players: MatchPlayer[];
   /** The player controlling the game on this PC (the camera target), when known. */
   localPlayer?: { name: string; primaryId?: string; teamNum: number };
+  /**
+   * The player on this PC only watched this game (e.g. an Honor Duel between two others after a
+   * match in the same lobby). Never logged.
+   */
+  spectated?: boolean;
 }
 
 export type LiveStatus =

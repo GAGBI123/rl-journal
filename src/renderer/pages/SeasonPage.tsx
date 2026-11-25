@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { BarChart3, Check, CheckCircle2, Dumbbell, Eraser, Flag, Gamepad2, ListChecks, Lock, LockOpen, Pencil, Plus, Trash2, X, Swords } from 'lucide-react';
 import { useStore } from '../store';
-import { addOneDay, clearDay, dayNumber, findSeason, removeLastDay, seasonEndDate, seasonLabel } from '../lib/journal';
+import { addOneDay, clearDay, currentDate, dayNumber, findSeason, removeLastDay, seasonEndDate, seasonLabel } from '../lib/journal';
 import { daySummary } from '../lib/stats';
-import { addDays, formatDate, todayISO } from '../lib/dates';
+import { addDays, formatDate } from '../lib/dates';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import { CloseSeasonModal, EditSeasonModal } from '../components/SeasonModals';
 import { confirmDialog, EmptyState } from '../components/ui';
@@ -18,7 +18,7 @@ export function SeasonPage({ seasonId }: { seasonId: string }) {
   const [modal, setModal] = useState<'close' | 'edit' | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const today = todayISO();
+  const today = currentDate(data.settings);
 
   // Calendar rows of 7 days, plus a "+" tile right after the last day.
   const weeks = useMemo(() => {

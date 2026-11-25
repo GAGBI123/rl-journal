@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { BarChart3, CalendarDays, CheckCircle2, Dumbbell, Gamepad2, Plus, Star } from 'lucide-react';
 import { useStore } from '../store';
 import { daySummary, buildContext, statById, type Scope } from '../lib/stats';
-import { dayNumber, seasonEndDate } from '../lib/journal';
-import { formatDate, todayISO } from '../lib/dates';
+import { currentDate, dayNumber, seasonEndDate } from '../lib/journal';
+import { formatDate } from '../lib/dates';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import { NewSeasonModal } from '../components/SeasonModals';
 import { StatCard, useFavorites } from '../components/StatCard';
@@ -26,7 +26,7 @@ function seasonTotals(data: AppData, season: Season) {
 function SeasonCard({ season }: { season: Season }) {
   const data = useStore((s) => s.data);
   const navigate = useStore((s) => s.navigate);
-  const today = todayISO();
+  const today = currentDate(data.settings);
   const totals = useMemo(() => seasonTotals(data, season), [data, season]);
   const todayDay = season.days.find((d) => d.date === today);
   const todaySum = todayDay ? daySummary(data, todayDay) : null;

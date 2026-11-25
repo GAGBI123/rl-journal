@@ -46,12 +46,14 @@ Your journal is never replaced, not by updates and not by running the installer 
 - Add a season and its dates are filled in from the **Rocket League season calendar**: the current season first, and if you already have it, the seasons before it (start date and length). Custom dates work too. A season that's already over is added as completed.
 - Add days with the **+** after the last day. Only the last day can be removed, and clearing a day empties it without removing it.
 - Close a season when it's over: the remaining days are removed and it's marked as completed on the home screen.
+- **You end your days.** A day lasts until you press **End day** (in the sidebar or on the day), so a session that goes past midnight still counts for the day it started. Ended one by mistake? **Reopen day**. Prefer a new day at midnight? Turn off **End days yourself** in Settings.
 
 ### Daily log
 - Pick a **section** (Training, Games, or your own), then **what you did**, then **time** (in minutes) or **amount**. Totals show as days, hours and minutes (e.g. *1d 4h 20m*).
 - Put **sections inside sections**. For example, add *Freeplay* inside Training and log *Overall*, *Flicks* or *Air dribbles* inside it. You'll see your total Freeplay time and the time for each part. An activity you've already been logging can be turned into a section, and what you logged moves to *Overall*.
 - Add an optional **description**, like *"aerials, flicks, air dribbles"*.
 - Logging the same thing twice in a day adds to that day's total instead of creating a second entry.
+- Logged something on the wrong day? **Move** it (the arrows next to an entry) to any other day, all of it or just part: some of the minutes, or pick which games go (for example the ones after midnight).
 - Don't want to see your wins and losses on a day? **Hide record** on that day hides them (saved per day).
 - While you type, you see how it compares to **yesterday**, **your average**, the **season average** and your **best day**, including when you set a new personal best.
 - Games start with **Ranked 1s / 2s / 3s**, **Casual 1s / 2s / 3s** and **Honor Duel**. Add your own and put them in any order in Settings.
@@ -75,8 +77,8 @@ Your journal is never replaced, not by updates and not by running the installer 
 ### Automatic game logging
 RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.com/developer/stats-api) to log your games for you while the app is running, even when it's minimized to the tray.
 
-- Every online match you finish is added to today: **ranked or casual**, the **mode**, **win or loss**, the score and your goals, assists, saves and shots.
-- **Honor Duels** are logged separately, with their own wins and losses.
+- Every online match you finish is added to the current day: **ranked or casual**, the **mode**, **win or loss**, the score and your goals, assists, saves and shots.
+- **Honor Duels** are logged separately, with their own wins and losses. Duels you only watch (two others in your lobby) are not logged.
 - It works out which account you're playing on by itself, so it handles **multiple accounts** with no setup. The top bar shows *Game connected · your account*.
 - Freeplay, training, workshop maps and offline games are never logged. Private matches are optional.
 - Win/loss tracking can be switched off separately for regular games and for Honor Duels.
