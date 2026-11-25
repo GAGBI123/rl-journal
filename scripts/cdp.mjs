@@ -1,16 +1,17 @@
 // Minimal Chrome DevTools Protocol driver for screenshotting the running app.
-// Usage: node scripts/cdp.mjs <port> <outDir> <step.json>
+// Usage: node scripts/cdp.mjs <port> <outDir> <step.json> [page url contains, e.g. overlay.html]
 // step file: [{ "eval": "js", "wait": 300, "shot": "name" }, ...]
 import WebSocket from 'ws';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const [port, outDir, stepsFile] = process.argv.slice(2);
+const [port, outDir, stepsFile, urlFilter] = process.argv.slice(2);
 const steps = JSON.parse(readFileSync(stepsFile, 'utf8'));
 mkdirSync(outDir, { recursive: true });
 
 const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-const page = targets.find((t) => t.type === 'page' && !t.url.startsWith('devtools'));
+const pages = targets.filter((t) => t.type === 'page' && !t.url.startsWith('devtools'));
+const page = urlFilter ? pages.find((t) => t.url.includes(urlFilter)) : pages.find((t) => !t.url.includes('overlay.html')) ?? pages[0];
 if (!page) throw new Error('no page target');
 const ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((r) => ws.once('open', r));

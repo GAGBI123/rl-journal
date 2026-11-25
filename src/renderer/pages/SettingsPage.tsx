@@ -1,8 +1,22 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Clock, Download, FolderOpen, GripVertical, Hash, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Download, Folder, FolderInput, FolderOpen, FolderPlus, GripVertical, Hash, Plus, RefreshCw, Timer, Trash2, Upload } from 'lucide-react';
 import { useStore } from '../store';
 import { confirmDialog, Field, Modal, Segmented, Toggle } from '../components/ui';
-import { moveActivity, nextActivityOrder, normalizeData, SECTION_COLORS, sectionActivities, sortedSections } from '../lib/journal';
+import {
+  activityToSection,
+  childSections,
+  createSection,
+  deleteSectionTree,
+  descendantSectionIds,
+  moveActivity,
+  moveSection,
+  nextActivityOrder,
+  normalizeData,
+  SECTION_COLORS,
+  sectionActivities,
+  sectionLabel,
+  sortedSections,
+} from '../lib/journal';
 import { relativeTime } from '../lib/dates';
 import { uid } from '../lib/format';
 import type { Measure, Section } from '../../shared/model';
@@ -33,25 +47,34 @@ function InlineName({ value, onSave }: { value: string; onSave: (v: string) => v
   );
 }
 
-function NewSectionModal({ onClose }: { onClose: () => void }) {
+function NewSectionModal({ parentId, onClose }: { parentId?: string; onClose: () => void }) {
   const data = useStore((s) => s.data);
   const mutate = useStore((s) => s.mutate);
+  const toast = useStore((s) => s.toast);
   const [name, setName] = useState('');
-  const [color, setColor] = useState(SECTION_COLORS[(data.sections.length) % SECTION_COLORS.length]);
-  const taken = data.sections.some((s) => s.name.toLowerCase() === name.trim().toLowerCase());
-  const valid = name.trim() && !taken;
+  const [parent, setParent] = useState<string>(parentId ?? '');
+  const parentSection = parent ? data.sections.find((s) => s.id === parent) : undefined;
+  const [color, setColor] = useState(parentSection?.color ?? SECTION_COLORS[data.sections.length % SECTION_COLORS.length]);
+  const siblings = childSections(data, parent || undefined);
+  const taken = siblings.some((s) => s.name.toLowerCase() === name.trim().toLowerCase());
+  // An activity with the same name in the parent becomes the new section (its history moves to "Overall").
+  const twin = parent ? sectionActivities(data, parent).find((a) => a.name.trim().toLowerCase() === name.trim().toLowerCase()) : undefined;
+  const valid = !!name.trim() && !taken;
   const save = () => {
     if (!valid) return;
+    let label = '';
     mutate((d) => {
-      const s: Section = { id: uid(), name: name.trim(), color, kind: 'other', order: Math.max(0, ...d.sections.map((x) => x.order)) + 1 };
-      d.sections.push(s);
+      const created = twin ? activityToSection(d, twin.id) : createSection(d, name, color, parent || undefined);
+      if (created && !twin) created.color = color;
+      if (created) label = sectionLabel(d, created.id);
     });
+    toast({ kind: 'success', title: `Section ${label} added`, body: twin ? `What you logged as “${twin.name}” is now under ${twin.name} › Overall.` : undefined });
     onClose();
   };
   return (
     <Modal
       title="New section"
-      subtitle="Sections group the things you do, like Training and Games."
+      subtitle="Sections group the things you do. Put a section inside another one to split it up, e.g. Freeplay inside Training."
       onClose={onClose}
       footer={
         <>
@@ -64,8 +87,26 @@ function NewSectionModal({ onClose }: { onClose: () => void }) {
         </>
       }
     >
-      <Field label="Name" help={taken ? <span className="down">A section with that name exists</span> : 'e.g. Replay review, Coaching, Workshop maps'}>
+      <Field label="Name" help={taken ? <span className="down">There is already a section with that name here</span> : 'e.g. Freeplay, Replay review, Coaching'}>
         <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
+      </Field>
+      <Field label="Inside" help={twin ? `“${twin.name}” is already an activity there. It becomes this section, and its logged time moves to ${twin.name} › Overall.` : undefined}>
+        <select
+          className="input"
+          value={parent}
+          onChange={(e) => {
+            setParent(e.target.value);
+            const p = data.sections.find((s) => s.id === e.target.value);
+            if (p) setColor(p.color);
+          }}
+        >
+          <option value="">Nothing (top level)</option>
+          {sortedSections(data).map((s) => (
+            <option key={s.id} value={s.id}>
+              {sectionLabel(data, s.id)}
+            </option>
+          ))}
+        </select>
       </Field>
       <Field label="Color">
         <div className="color-pick">
@@ -81,7 +122,8 @@ function NewSectionModal({ onClose }: { onClose: () => void }) {
 function SectionsManager() {
   const data = useStore((s) => s.data);
   const mutate = useStore((s) => s.mutate);
-  const [adding, setAdding] = useState(false);
+  const toast = useStore((s) => s.toast);
+  const [adding, setAdding] = useState<{ parentId?: string } | null>(null);
   const [newAct, setNewAct] = useState<Record<string, string>>({});
   // Drag-to-reorder state: which activity is dragged and where it would land.
   const [drag, setDrag] = useState<{ id: string; sectionId: string } | null>(null);
@@ -119,20 +161,38 @@ function SectionsManager() {
   };
 
   const deleteSection = async (sec: Section) => {
-    const ids = new Set(data.activities.filter((a) => a.sectionId === sec.id).map((a) => a.id));
+    const tree = descendantSectionIds(data, sec.id);
+    const ids = new Set(data.activities.filter((a) => tree.has(a.sectionId)).map((a) => a.id));
     const n = countEntries(data, (a) => ids.has(a));
+    const subs = tree.size - 1;
     const ok = await confirmDialog({
-      title: `Delete section “${sec.name}”?`,
-      body: `Its ${ids.size} activit${ids.size === 1 ? 'y' : 'ies'}${n ? ` and ${n} logged entries` : ''} will be deleted. This can't be undone.`,
+      title: `Delete section “${sectionLabel(data, sec.id)}”?`,
+      body: `${subs ? `Its ${subs} section${subs === 1 ? '' : 's'} inside, ` : 'Its '}${ids.size} activit${ids.size === 1 ? 'y' : 'ies'}${
+        n ? ` and ${n} logged entries` : ''
+      } will be deleted. This can't be undone.`,
       confirmLabel: 'Delete section',
       danger: true,
     });
     if (!ok) return;
     mutate((d) => {
-      d.sections = d.sections.filter((s) => s.id !== sec.id);
-      d.activities = d.activities.filter((a) => !ids.has(a.id));
-      for (const s of d.seasons) for (const day of s.days) day.entries = day.entries.filter((e) => !ids.has(e.activityId));
+      deleteSectionTree(d, sec.id);
     });
+  };
+
+  const turnIntoSection = async (activityId: string, name: string, sectionName: string) => {
+    const n = countEntries(data, (a) => a === activityId);
+    const ok = await confirmDialog({
+      title: `Turn “${name}” into a section?`,
+      body: `“${name}” becomes a section inside ${sectionName}, so you can add things inside it (e.g. ${name} › Flicks). ${
+        n ? `Your ${n} logged entr${n === 1 ? 'y moves' : 'ies move'} to ${name} › Overall, ` : ''
+      }and its statistics include everything inside it.`,
+      confirmLabel: 'Turn into section',
+    });
+    if (!ok) return;
+    mutate((d) => {
+      activityToSection(d, activityId);
+    });
+    toast({ kind: 'success', title: `${name} is now a section`, body: 'Add the things you do in it below.' });
   };
 
   const addActivity = (sectionId: string, kind: Section['kind']) => {
@@ -153,127 +213,164 @@ function SectionsManager() {
     setNewAct({ ...newAct, [sectionId]: '' });
   };
 
+  const renderSection = (sec: Section, depth: number): ReactNode => {
+    const acts = sectionActivities(data, sec.id);
+    const subs = childSections(data, sec.id);
+    const siblings = childSections(data, sec.parentId);
+    const pos = siblings.findIndex((s) => s.id === sec.id);
+    return (
+      <div className={depth ? 'sub-section' : ''} key={sec.id} style={depth ? { ['--sub-color' as any]: sec.color } : undefined}>
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <div className="row" style={{ minWidth: 0 }}>
+            {depth > 0 && (
+              <div className="order-ctl">
+                <div className="arrows">
+                  <button aria-label={`Move ${sec.name} up`} title="Move up" disabled={pos <= 0} onClick={() => mutate((d) => moveSection(d, sec.id, pos - 1))}>
+                    <ChevronUp size={13} />
+                  </button>
+                  <button
+                    aria-label={`Move ${sec.name} down`}
+                    title="Move down"
+                    disabled={pos === siblings.length - 1}
+                    onClick={() => mutate((d) => moveSection(d, sec.id, pos + 1))}
+                  >
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+            {depth > 0 ? <Folder size={15} color={sec.color} /> : <span className="color-dot" style={{ background: sec.color }} />}
+            <InlineName
+              value={sec.name}
+              onSave={(v) =>
+                mutate((d) => {
+                  const s = d.sections.find((x) => x.id === sec.id);
+                  if (s) s.name = v;
+                })
+              }
+            />
+            {sec.builtIn && <span className="badge">Built-in</span>}
+          </div>
+          <div className="row" style={{ gap: 2 }}>
+            <button className="icon-btn" title={`Add a section inside ${sec.name}`} aria-label={`Add a section inside ${sec.name}`} onClick={() => setAdding({ parentId: sec.id })}>
+              <FolderPlus size={15} />
+            </button>
+            {!sec.builtIn && (
+              <button className="icon-btn" title="Delete section" aria-label={`Delete section ${sec.name}`} onClick={() => deleteSection(sec)}>
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
+        </div>
+        {acts.map((a, i) => (
+          <div
+            className={`act-row ${drag?.id === a.id ? 'dragging' : ''} ${drop?.id === a.id && drag?.id !== a.id ? (drop.after ? 'drop-after' : 'drop-before') : ''}`}
+            key={a.id}
+            draggable={drag?.id === a.id}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', a.id);
+            }}
+            onDragOver={(e) => {
+              if (!drag || drag.sectionId !== sec.id) return;
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              const after = e.clientY > r.top + r.height / 2;
+              if (drop?.id !== a.id || drop.after !== after) setDrop({ id: a.id, after });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              finishDrag();
+            }}
+            onDragEnd={finishDrag}
+          >
+            <div className="order-ctl">
+              <span className="grip" title="Drag to move" onMouseDown={() => setDrag({ id: a.id, sectionId: sec.id })} onMouseUp={() => !drop && setDrag(null)}>
+                <GripVertical size={15} />
+              </span>
+              <div className="arrows">
+                <button aria-label={`Move ${a.name} up`} title="Move up" disabled={i === 0} onClick={() => move(a.id, i - 1)}>
+                  <ChevronUp size={13} />
+                </button>
+                <button aria-label={`Move ${a.name} down`} title="Move down" disabled={i === acts.length - 1} onClick={() => move(a.id, i + 1)}>
+                  <ChevronDown size={13} />
+                </button>
+              </div>
+              <span className="order-num">{i + 1}</span>
+            </div>
+            <InlineName
+              value={a.name}
+              onSave={(v) =>
+                mutate((d) => {
+                  const x = d.activities.find((y) => y.id === a.id);
+                  if (x) x.name = v;
+                })
+              }
+            />
+            <div style={{ marginLeft: 'auto' }} title="Default measure when adding">
+              <Segmented
+                value={a.defaultMeasure}
+                onChange={(m: Measure) =>
+                  mutate((d) => {
+                    const x = d.activities.find((y) => y.id === a.id);
+                    if (x) x.defaultMeasure = m;
+                  })
+                }
+                options={[
+                  { value: 'time', label: <Clock size={13} /> },
+                  { value: 'amount', label: <Hash size={13} /> },
+                ]}
+              />
+            </div>
+            {!a.key && (
+              <button
+                className="icon-btn"
+                title="Turn into a section (to add things inside it)"
+                aria-label={`Turn ${a.name} into a section`}
+                onClick={() => turnIntoSection(a.id, a.name, sec.name)}
+              >
+                <FolderInput size={14} />
+              </button>
+            )}
+            <button className="icon-btn" title="Delete" aria-label={`Delete ${a.name}`} onClick={() => deleteActivity(a.id, a.name)}>
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        <div className="row" style={{ marginTop: 10 }}>
+          <input
+            className="input"
+            style={{ height: 32 }}
+            placeholder={`Add to ${sec.name}…`}
+            value={newAct[sec.id] ?? ''}
+            onChange={(e) => setNewAct({ ...newAct, [sec.id]: e.target.value })}
+            onKeyDown={(e) => e.key === 'Enter' && addActivity(sec.id, sec.kind)}
+          />
+          <button className="btn small" onClick={() => addActivity(sec.id, sec.kind)} aria-label={`Add to ${sec.name}`}>
+            <Plus size={14} />
+          </button>
+        </div>
+        {subs.map((s) => renderSection(s, depth + 1))}
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="section-title">
         <h2>Sections & activities</h2>
-        <button className="btn small" onClick={() => setAdding(true)}>
+        <button className="btn small" onClick={() => setAdding({})}>
           <Plus size={14} /> New section
         </button>
       </div>
       <div className="grid auto-lg">
-        {sortedSections(data).map((sec) => {
-          const acts = sectionActivities(data, sec.id);
-          return (
-            <div className="card settings-list" key={sec.id}>
-              <div className="row between" style={{ marginBottom: 8 }}>
-                <div className="row">
-                  <span className="color-dot" style={{ background: sec.color }} />
-                  <InlineName
-                    value={sec.name}
-                    onSave={(v) =>
-                      mutate((d) => {
-                        const s = d.sections.find((x) => x.id === sec.id);
-                        if (s) s.name = v;
-                      })
-                    }
-                  />
-                  {sec.builtIn && <span className="badge">Built-in</span>}
-                </div>
-                {!sec.builtIn && (
-                  <button className="icon-btn" title="Delete section" aria-label="Delete section" onClick={() => deleteSection(sec)}>
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-              {acts.map((a, i) => (
-                <div
-                  className={`act-row ${drag?.id === a.id ? 'dragging' : ''} ${drop?.id === a.id && drag?.id !== a.id ? (drop.after ? 'drop-after' : 'drop-before') : ''}`}
-                  key={a.id}
-                  draggable={drag?.id === a.id}
-                  onDragStart={(e) => {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', a.id);
-                  }}
-                  onDragOver={(e) => {
-                    if (!drag || drag.sectionId !== sec.id) return;
-                    e.preventDefault();
-                    const r = e.currentTarget.getBoundingClientRect();
-                    const after = e.clientY > r.top + r.height / 2;
-                    if (drop?.id !== a.id || drop.after !== after) setDrop({ id: a.id, after });
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    finishDrag();
-                  }}
-                  onDragEnd={finishDrag}
-                >
-                  <div className="order-ctl">
-                    <span
-                      className="grip"
-                      title="Drag to move"
-                      onMouseDown={() => setDrag({ id: a.id, sectionId: sec.id })}
-                      onMouseUp={() => !drop && setDrag(null)}
-                    >
-                      <GripVertical size={15} />
-                    </span>
-                    <div className="arrows">
-                      <button aria-label={`Move ${a.name} up`} title="Move up" disabled={i === 0} onClick={() => move(a.id, i - 1)}>
-                        <ChevronUp size={13} />
-                      </button>
-                      <button aria-label={`Move ${a.name} down`} title="Move down" disabled={i === acts.length - 1} onClick={() => move(a.id, i + 1)}>
-                        <ChevronDown size={13} />
-                      </button>
-                    </div>
-                    <span className="order-num">{i + 1}</span>
-                  </div>
-                  <InlineName
-                    value={a.name}
-                    onSave={(v) =>
-                      mutate((d) => {
-                        const x = d.activities.find((y) => y.id === a.id);
-                        if (x) x.name = v;
-                      })
-                    }
-                  />
-                  <div style={{ marginLeft: 'auto' }} title="Default measure when adding">
-                    <Segmented
-                      value={a.defaultMeasure}
-                      onChange={(m: Measure) =>
-                        mutate((d) => {
-                          const x = d.activities.find((y) => y.id === a.id);
-                          if (x) x.defaultMeasure = m;
-                        })
-                      }
-                      options={[
-                        { value: 'time', label: <Clock size={13} /> },
-                        { value: 'amount', label: <Hash size={13} /> },
-                      ]}
-                    />
-                  </div>
-                  <button className="icon-btn" title="Delete" aria-label={`Delete ${a.name}`} onClick={() => deleteActivity(a.id, a.name)}>
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-              <div className="row" style={{ marginTop: 10 }}>
-                <input
-                  className="input"
-                  style={{ height: 32 }}
-                  placeholder={`Add to ${sec.name}…`}
-                  value={newAct[sec.id] ?? ''}
-                  onChange={(e) => setNewAct({ ...newAct, [sec.id]: e.target.value })}
-                  onKeyDown={(e) => e.key === 'Enter' && addActivity(sec.id, sec.kind)}
-                />
-                <button className="btn small" onClick={() => addActivity(sec.id, sec.kind)}>
-                  <Plus size={14} />
-                </button>
-              </div>
-            </div>
-          );
-        })}
+        {childSections(data, undefined).map((sec) => (
+          <div className="card settings-list" key={sec.id}>
+            {renderSection(sec, 0)}
+          </div>
+        ))}
       </div>
-      {adding && <NewSectionModal onClose={() => setAdding(false)} />}
+      {adding && <NewSectionModal parentId={adding.parentId} onClose={() => setAdding(null)} />}
     </>
   );
 }
@@ -281,6 +378,7 @@ function SectionsManager() {
 function UpdatesCard({ version }: { version: string }) {
   const update = useStore((s) => s.update);
   const auto = useStore((s) => s.data.settings.autoUpdate);
+  const checks = useStore((s) => s.data.settings.updateChecks);
   const mutate = useStore((s) => s.mutate);
   const [busy, setBusy] = useState(false);
   const check = async () => {
@@ -303,7 +401,7 @@ function UpdatesCard({ version }: { version: string }) {
       action = null;
       break;
     case 'idle':
-      status = 'Checks for new versions every few hours.';
+      status = checks ? 'Checks for new versions every few hours.' : 'Automatic checks are off.';
       break;
     case 'checking':
       status = 'Checking…';
@@ -369,15 +467,27 @@ function UpdatesCard({ version }: { version: string }) {
       {update.state !== 'unsupported' && (
         <div style={{ marginTop: 8 }}>
           <Toggle
-            title="Install updates automatically"
-            desc="Downloads new versions by itself and installs them when you aren't in a match or using the app, then tells you. Off: you get a notification and install with one click."
-            on={auto}
+            title="Check for updates"
+            desc="Every few hours the app asks GitHub if there's a new version. Nothing about you or your journal is sent. Off: only when you click Check for updates."
+            on={checks}
             onChange={(v) =>
               mutate((d) => {
-                d.settings.autoUpdate = v;
+                d.settings.updateChecks = v;
               })
             }
           />
+          {checks && (
+            <Toggle
+              title="Install updates automatically"
+              desc="Downloads new versions by itself and installs them when you aren't in a match or using the app, then tells you. Off: you get a notification and install with one click."
+              on={auto}
+              onChange={(v) =>
+                mutate((d) => {
+                  d.settings.autoUpdate = v;
+                })
+              }
+            />
+          )}
         </div>
       )}
     </div>
@@ -468,6 +578,39 @@ export function SettingsPage() {
           on={settings.ignorePrivateMatches}
           onChange={(v) => set('ignorePrivateMatches', v)}
         />
+      </div>
+
+      <div className="section-title">
+        <h2>Timer & in-game overlay</h2>
+      </div>
+      <div className="card">
+        <div className="muted small" style={{ marginBottom: 6 }}>
+          <Timer size={13} style={{ verticalAlign: -2 }} /> Start a timer from any day: pick what you're doing, enter the time and click <b>Start timer</b>. When it ends it's added to that day by itself.
+        </div>
+        <Toggle
+          title="Show the timer on top of Rocket League"
+          desc="A small timer at the top of the screen while the game runs, with a pause button. Works with the game in Borderless or Windowed mode. In Fullscreen, Windows draws the game over everything else, so use Borderless."
+          on={settings.timerOverlay}
+          onChange={(v) => set('timerOverlay', v)}
+        />
+        {settings.timerOverlay && (
+          <div className="row between" style={{ padding: '10px 0' }}>
+            <div>
+              <div style={{ fontWeight: 500 }}>Overlay position</div>
+              <div className="muted small">Top of the screen the game is on.</div>
+            </div>
+            <Segmented
+              value={settings.overlayPosition}
+              onChange={(v) => set('overlayPosition', v)}
+              options={[
+                { value: 'top-left', label: 'Left' },
+                { value: 'top-center', label: 'Center' },
+                { value: 'top-right', label: 'Right' },
+              ]}
+            />
+          </div>
+        )}
+        <Toggle title="Play a sound when a timer ends" on={settings.timerSound} onChange={(v) => set('timerSound', v)} />
       </div>
 
       <div className="section-title">

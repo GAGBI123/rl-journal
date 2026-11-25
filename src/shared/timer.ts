@@ -1,0 +1,76 @@
+// Training timer: shared by the main process (which owns it), the app window and the overlay.
+// All times are wall-clock based so a timer keeps counting through app restarts and updates.
+import type { TimeUnit } from './model';
+
+export interface TimerStart {
+  activityId: string;
+  /** e.g. "Training › Freeplay · Flicks" */
+  label: string;
+  /** Short name shown in the overlay, e.g. "Flicks". */
+  activityName: string;
+  color?: string;
+  seasonId: string;
+  dayId: string;
+  date: string;
+  durationMs: number;
+  unit: TimeUnit;
+  note?: string;
+}
+
+export interface TimerState extends TimerStart {
+  id: string;
+  /** Running since (epoch ms); null while paused. */
+  startedAt: number | null;
+  /** Time counted before the current run. */
+  accumulatedMs: number;
+  createdAt: number;
+}
+
+/** Sent to the app when a timer ends (or is finished early) so it can be logged. */
+export interface TimerCompletion {
+  timer: TimerState;
+  minutes: number;
+  unit: TimeUnit;
+  early: boolean;
+}
+
+export type TimerAction = 'pause' | 'resume' | 'toggle' | 'finish' | 'cancel';
+
+export function elapsedMs(t: TimerState, now = Date.now()) {
+  return Math.max(0, t.accumulatedMs + (t.startedAt !== null ? now - t.startedAt : 0));
+}
+
+export function remainingMs(t: TimerState, now = Date.now()) {
+  return Math.max(0, t.durationMs - elapsedMs(t, now));
+}
+
+export function isRunning(t: TimerState) {
+  return t.startedAt !== null;
+}
+
+export function pauseTimer(t: TimerState, now = Date.now()): TimerState {
+  if (t.startedAt === null) return t;
+  return { ...t, accumulatedMs: elapsedMs(t, now), startedAt: null };
+}
+
+export function resumeTimer(t: TimerState, now = Date.now()): TimerState {
+  if (t.startedAt !== null) return t;
+  return { ...t, startedAt: now };
+}
+
+/** 5:07 · 12:30 · 1:02:03 */
+export function fmtClock(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/** Minutes to log for a timer stopped early (whole minutes; under 30 seconds logs nothing). */
+export function earlyMinutes(t: TimerState, now = Date.now()) {
+  const ms = elapsedMs(t, now);
+  if (ms < 30_000) return 0;
+  return Math.max(1, Math.round(ms / 60_000));
+}

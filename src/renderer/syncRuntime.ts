@@ -1,6 +1,10 @@
 // Wires the live game connection and app updates into the store.
-import type { AppNotification, LocalPlayer } from '../shared/model';
+import type { AppNotification, LocalPlayer, MainSettings } from '../shared/model';
+import type { TimerCompletion } from '../shared/timer';
 import { applyLiveMatch } from './lib/sync';
+import { activityById, addToDay, dayNumber, ensureSyncDay, findSeason, seasonLabel } from './lib/journal';
+import { fmtMinutes } from './lib/format';
+import { playChime } from './lib/sound';
 import { flushSave, useStore } from './store';
 
 function announce(n: AppNotification | undefined) {
@@ -24,6 +28,8 @@ let started = false;
 export function startSyncRuntime() {
   if (started) return;
   started = true;
+  // Before liveReady(): the main process then sends any timer that finished while the app was loading.
+  startTimers();
 
   window.rlj.onLiveStatus((s) => {
     useStore.setState({ liveStatus: s });
@@ -50,17 +56,62 @@ export function startSyncRuntime() {
   let lastKey = '';
   const pushSettings = () => {
     const s = useStore.getState().data.settings;
-    const key = JSON.stringify([s.liveGameEnabled, s.liveGamePort, s.closeToTray, s.startWithWindows, s.autoUpdate]);
+    const main: MainSettings = {
+      closeToTray: s.closeToTray,
+      startWithWindows: s.startWithWindows,
+      autoUpdate: s.autoUpdate,
+      updateChecks: s.updateChecks,
+      timerOverlay: s.timerOverlay,
+      overlayPosition: s.overlayPosition,
+    };
+    const key = JSON.stringify([s.liveGameEnabled, s.liveGamePort, main]);
     if (key === lastKey) return;
     lastKey = key;
     window.rlj.liveConfigure({ enabled: s.liveGameEnabled, port: s.liveGamePort }).then((st) => useStore.setState({ liveStatus: st }));
-    window.rlj.applySettings({ closeToTray: s.closeToTray, startWithWindows: s.startWithWindows, autoUpdate: s.autoUpdate });
+    window.rlj.applySettings(main);
   };
   pushSettings();
   useStore.subscribe(pushSettings);
   window.rlj.liveReady().then((st) => useStore.setState({ liveStatus: st }));
 
   startUpdates();
+}
+
+/** Log a finished timer to the day it was started on. */
+export function logTimer(c: TimerCompletion) {
+  const { mutate, toast, data } = useStore.getState();
+  let where = '';
+  let target: { seasonId: string; dayId: string } | null = null;
+  mutate((d) => {
+    const t = c.timer;
+    let season = findSeason(d, t.seasonId);
+    let day = season?.days.find((x) => x.id === t.dayId);
+    if (!season || !day) {
+      // The day was deleted meanwhile: use that date in an active season instead.
+      const hit = ensureSyncDay(d, t.date);
+      season = hit?.season;
+      day = hit?.day;
+    }
+    if (!season || !day || !activityById(d, t.activityId)) return;
+    addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, unit: c.unit, note: t.note });
+    where = `${seasonLabel(season)}, Day ${dayNumber(season, day)}`;
+    target = { seasonId: season.id, dayId: day.id };
+  });
+  const tgt = target as { seasonId: string; dayId: string } | null;
+  const title = c.early ? `Timer stopped: ${fmtMinutes(c.minutes)} ${c.timer.activityName} logged` : `Timer done: ${fmtMinutes(c.minutes)} ${c.timer.activityName} logged`;
+  if (!tgt) {
+    toast({ kind: 'error', title: 'Timer finished but not logged', body: 'Its day or activity no longer exists, and no active season covers that date.' });
+    return;
+  }
+  toast({ kind: 'success', title, body: `Added to ${where}.`, view: { name: 'day', seasonId: tgt.seasonId, dayId: tgt.dayId } });
+  if (data.settings.timerSound) playChime();
+  if (data.settings.systemNotifications) window.rlj.notify({ title, body: `Added to ${where}.` });
+}
+
+function startTimers() {
+  window.rlj.timerGet().then((t) => useStore.setState({ timer: t }));
+  window.rlj.onTimerState((t) => useStore.setState({ timer: t }));
+  window.rlj.onTimerComplete((c) => logTimer(c));
 }
 
 function startUpdates() {

@@ -1,9 +1,10 @@
 {
   "name": "rl-journal",
   "productName": "RL Journal",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Rocket League training & games journal with season tracking, statistics and automatic game logging.",
   "author": "RL Journal",
+  "license": "MIT",
   "homepage": "https://github.com/GAGBI123/rl-journal",
   "repository": {
     "type": "git",
@@ -38,7 +39,8 @@
       "dist/**/*",
       "dist-electron/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      "LICENSE"
     ],
     "win": {
       "target": [

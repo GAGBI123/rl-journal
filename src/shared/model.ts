@@ -13,8 +13,11 @@ export interface Section {
   color: string;
   /** Built-in sections (Training, Games) can be renamed but not deleted. */
   builtIn?: boolean;
-  /** Marks the section whose amount-entries count as "games" (enables wins). */
+  /** Marks the section whose amount-entries count as "games" (enables wins). Sub-sections copy their top section's kind. */
   kind?: 'training' | 'games' | 'other';
+  /** Set for a section inside another section (e.g. Freeplay inside Training). */
+  parentId?: string;
+  /** Position among its sibling sections. */
   order: number;
 }
 
@@ -156,12 +159,31 @@ export interface Settings {
   startWithWindows: boolean;
   /** Download and install updates by itself. Off: only tell the user. */
   autoUpdate: boolean;
+  /** Check GitHub for new versions at all (off = only when the user clicks "Check for updates"). */
+  updateChecks: boolean;
+  /** Show the small timer overlay on top of Rocket League while a timer runs. */
+  timerOverlay: boolean;
+  overlayPosition: OverlayPosition;
+  /** Play a short sound when a timer finishes. */
+  timerSound: boolean;
   /** Players seen in the last live match, used for "that's me" linking. */
   lastMatchPlayers?: LocalPlayer[];
   /** The player last seen controlling the game on this PC. */
   lastLocalPlayer?: LocalPlayer;
   /** App version that last opened this file (used for the "updated" message). */
   lastRunVersion?: string;
+}
+
+export type OverlayPosition = 'top-left' | 'top-center' | 'top-right';
+
+/** Settings the main process needs (sent whenever they change). */
+export interface MainSettings {
+  closeToTray: boolean;
+  startWithWindows: boolean;
+  autoUpdate: boolean;
+  updateChecks: boolean;
+  timerOverlay: boolean;
+  overlayPosition: OverlayPosition;
 }
 
 export interface AppData {

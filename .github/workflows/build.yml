@@ -89,6 +89,8 @@ jobs:
             echo "- **Linux:** \`RL-Journal-x86_64.AppImage\`. Make it executable, then double-click it."
             echo
             echo "Already installed? The app updates itself. Your journal is never replaced."
+            echo
+            echo "[Code signing policy](https://github.com/$GITHUB_REPOSITORY#code-signing-policy) · [Privacy policy](https://github.com/$GITHUB_REPOSITORY#privacy-policy) · [MIT license](https://github.com/$GITHUB_REPOSITORY/blob/main/LICENSE)"
           } > notes.md
           ls -la out
           if gh release view "$TAG" > /dev/null 2>&1; then

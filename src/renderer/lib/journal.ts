@@ -17,6 +17,10 @@ export const DEFAULT_SETTINGS: Settings = {
   closeToTray: true,
   startWithWindows: false,
   autoUpdate: true,
+  updateChecks: true,
+  timerOverlay: true,
+  overlayPosition: 'top-center',
+  timerSound: true,
 };
 
 /** Settings keys from older versions that no longer exist. */
@@ -101,9 +105,20 @@ export function normalizeData(raw: any): AppData {
     s.days = (s.days ?? []).map((d: Day) => ({ ...d, entries: d.entries ?? [] }));
     sortDays(s);
   }
-  // Guarantee the two built-in sections exist.
+  // Guarantee the two built-in top-level sections exist.
   for (const sec of base.sections) {
-    if (!data.sections.some((s) => s.kind === sec.kind)) data.sections.push(sec);
+    if (!data.sections.some((s) => s.kind === sec.kind && !s.parentId)) data.sections.push(sec);
+  }
+  // Sub-sections: drop links to missing parents (and loops), and inherit the top section's kind.
+  const byId = new Map(data.sections.map((s) => [s.id, s]));
+  for (const s of data.sections) {
+    if (s.parentId && (!byId.has(s.parentId) || s.parentId === s.id || s.builtIn)) delete s.parentId;
+  }
+  for (const s of data.sections) {
+    if (!s.parentId) continue;
+    const path = sectionPath(data, s.id);
+    if (path[0]?.parentId) delete s.parentId; // loop: make it top-level
+    else s.kind = path[0]?.kind ?? 'other';
   }
   data.accounts = data.accounts.map((a: any) => {
     const names: string[] = Array.isArray(a.inGameNames) ? a.inGameNames : [];
@@ -319,12 +334,128 @@ export function sectionOfActivity(data: AppData, activityId: string) {
   return a ? sectionById(data, a.sectionId) : undefined;
 }
 
+/** The top-level Games section (where live matches are logged). */
 export function gamesSection(data: AppData) {
-  return data.sections.find((s) => s.kind === 'games')!;
+  return data.sections.find((s) => s.kind === 'games' && !s.parentId) ?? data.sections.find((s) => s.kind === 'games')!;
 }
 
-export function sortedSections(data: AppData) {
-  return [...data.sections].sort((a, b) => a.order - b.order);
+/** Sections directly inside `parentId` (top-level sections when undefined), in the user's order. */
+export function childSections(data: AppData, parentId?: string): Section[] {
+  return data.sections.filter((s) => (s.parentId ?? undefined) === parentId).sort((a, b) => a.order - b.order);
+}
+
+/** All sections in tree order: each section followed by the sections inside it. */
+export function sortedSections(data: AppData): Section[] {
+  const out: Section[] = [];
+  const walk = (parentId: string | undefined, seen: Set<string>) => {
+    for (const s of childSections(data, parentId)) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      out.push(s);
+      walk(s.id, seen);
+    }
+  };
+  walk(undefined, new Set());
+  return out;
+}
+
+/** Root → section, e.g. [Training, Freeplay]. */
+export function sectionPath(data: AppData, sectionId: string): Section[] {
+  const out: Section[] = [];
+  let cur = sectionById(data, sectionId);
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    out.unshift(cur);
+    cur = cur.parentId ? sectionById(data, cur.parentId) : undefined;
+  }
+  return out;
+}
+
+/** "Training › Freeplay" */
+export function sectionLabel(data: AppData, sectionId: string, sep = ' › ') {
+  return sectionPath(data, sectionId)
+    .map((s) => s.name)
+    .join(sep);
+}
+
+export function sectionDepth(data: AppData, sectionId: string) {
+  return Math.max(0, sectionPath(data, sectionId).length - 1);
+}
+
+/** The section and every section inside it (any depth). */
+export function descendantSectionIds(data: AppData, sectionId: string): Set<string> {
+  const ids = new Set<string>([sectionId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const s of data.sections) {
+      if (s.parentId && ids.has(s.parentId) && !ids.has(s.id)) {
+        ids.add(s.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
+/** "Training › Freeplay · Flicks" */
+export function activityLabel(data: AppData, activityId: string) {
+  const a = activityById(data, activityId);
+  if (!a) return 'Unknown';
+  return `${sectionLabel(data, a.sectionId)} · ${a.name}`;
+}
+
+/** Create a section, optionally inside another one (it then inherits its kind and color). */
+export function createSection(data: AppData, name: string, color: string, parentId?: string): Section {
+  const parent = parentId ? sectionById(data, parentId) : undefined;
+  const siblings = childSections(data, parent?.id);
+  const section: Section = {
+    id: uid(),
+    name: name.trim(),
+    color,
+    kind: parent ? parent.kind ?? 'other' : 'other',
+    parentId: parent?.id,
+    order: siblings.length ? Math.max(...siblings.map((s) => s.order)) + 1 : 0,
+  };
+  data.sections.push(section);
+  return section;
+}
+
+/**
+ * Turn an activity into a section with the same name, in the same place. Everything logged so far
+ * moves to an "Overall" activity inside it, so nothing is lost (e.g. Freeplay → Freeplay › Overall).
+ */
+export function activityToSection(data: AppData, activityId: string, innerName = 'Overall'): Section | null {
+  const a = activityById(data, activityId);
+  const parent = a ? sectionById(data, a.sectionId) : undefined;
+  if (!a || !parent) return null;
+  const section = createSection(data, a.name, parent.color, parent.id);
+  a.sectionId = section.id;
+  a.name = innerName;
+  a.order = 0;
+  a.builtIn = false;
+  return section;
+}
+
+/** Delete a section with everything inside it. Returns how many activities were removed. */
+export function deleteSectionTree(data: AppData, sectionId: string) {
+  const ids = descendantSectionIds(data, sectionId);
+  const acts = new Set(data.activities.filter((a) => ids.has(a.sectionId)).map((a) => a.id));
+  data.sections = data.sections.filter((s) => !ids.has(s.id));
+  data.activities = data.activities.filter((a) => !acts.has(a.id));
+  for (const s of data.seasons) for (const d of s.days) d.entries = d.entries.filter((e) => !acts.has(e.activityId));
+  data.matches = data.matches.filter((m) => !acts.has(m.activityId));
+  return acts.size;
+}
+
+/** Move a section among its siblings. */
+export function moveSection(data: AppData, sectionId: string, index: number) {
+  const s = sectionById(data, sectionId);
+  if (!s) return;
+  const list = childSections(data, s.parentId).filter((x) => x.id !== s.id);
+  list.splice(Math.max(0, Math.min(list.length, index)), 0, s);
+  list.forEach((x, i) => (x.order = i));
 }
 
 /** A section's activities in the user's order. */
@@ -409,7 +540,9 @@ export function findOrCreateActivity(
 ): Activity {
   const trimmed = name.trim();
   if (key) {
-    const byKey = data.activities.find((a) => a.sectionId === sectionId && a.key === key);
+    // A game mode may live in a sub-section (e.g. after "turn into section"), so look in the whole tree.
+    const tree = descendantSectionIds(data, sectionId);
+    const byKey = data.activities.find((a) => tree.has(a.sectionId) && a.key === key);
     if (byKey) return byKey;
   }
   const existing = data.activities.find((a) => a.sectionId === sectionId && a.name.trim().toLowerCase() === trimmed.toLowerCase());

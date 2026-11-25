@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AppData, LiveStatus, LocalPlayer, UpdateStatus } from '../shared/model';
+import type { TimerState } from '../shared/timer';
 import { createDefaultData, normalizeData } from './lib/journal';
 import { uid } from './lib/format';
 
@@ -27,6 +28,7 @@ interface State {
   liveStatus: LiveStatus;
   livePlayers: LocalPlayer[];
   update: UpdateStatus;
+  timer: TimerState | null;
   toasts: Toast[];
   navigate: (v: View, opts?: { replace?: boolean }) => void;
   back: () => void;
@@ -61,6 +63,7 @@ export const useStore = create<State>((set, get) => ({
   liveStatus: { state: 'disabled' },
   livePlayers: [],
   update: { state: 'idle' },
+  timer: null,
   toasts: [],
   navigate: (v, opts) =>
     set((s) => ({

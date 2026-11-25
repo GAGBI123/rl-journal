@@ -13,10 +13,12 @@ Plan your season, log what you practise every day, and let your games log themse
 | **File** | `RL-Journal-Setup-<version>.exe` | `RL-Journal-x86_64.AppImage` |
 | **Get it** | [Latest release](https://github.com/GAGBI123/rl-journal/releases/latest) | [Download AppImage](https://github.com/GAGBI123/rl-journal/releases/latest/download/RL-Journal-x86_64.AppImage) |
 
+Free and open source ([MIT](LICENSE)). See the [code signing policy](#code-signing-policy) and [privacy policy](#privacy-policy).
+
 ### Install on Windows
 
 1. Download `RL-Journal-Setup-<version>.exe` from the [latest release](https://github.com/GAGBI123/rl-journal/releases/latest).
-2. Run it. Windows may say *"Windows protected your PC"* because the app isn't code-signed. Click **More info → Run anyway**.
+2. Run it. Until code signing is active (see the [code signing policy](#code-signing-policy)), Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 3. Pick where to install, and RL Journal opens. It's in your Start menu and on your desktop.
 
 ### Install on Linux
@@ -33,6 +35,11 @@ RL Journal updates itself. New versions are downloaded in the background and ins
 
 Your journal is never replaced, not by updates and not by running the installer again.
 
+### Uninstall
+
+- **Windows:** Settings → Apps → **RL Journal** → Uninstall. Your journal stays in `%APPDATA%RL Journal`; delete that folder too if you want it gone.
+- **Linux:** delete the AppImage, plus `~/.local/share/applications/rl-journal.desktop` and `~/.local/share/icons/hicolor/512x512/apps/rl-journal.png` (the app-menu entry). If you turned on *Start when I log in*, also delete `~/.config/autostart/rl-journal.desktop`. Your journal is in `~/.config/RL Journal`.
+
 ## Features
 
 ### Seasons and days
@@ -41,12 +48,19 @@ Your journal is never replaced, not by updates and not by running the installer 
 
 ### Daily log
 - Pick a **section** (Training, Games, or your own), then **what you did**, then **time** (minutes or hours) or **amount**.
+- Put **sections inside sections**. For example, add *Freeplay* inside Training and log *Overall*, *Flicks* or *Air dribbles* inside it. You'll see your total Freeplay time and the time for each part. An activity you've already been logging can be turned into a section, and what you logged moves to *Overall*.
 - Add an optional **description**, like *"aerials, flicks, air dribbles"*.
 - Logging the same thing twice in a day adds to that day's total instead of creating a second entry.
 - While you type, you see how it compares to **yesterday**, **your average**, the **season average** and your **best day**, including when you set a new personal best.
 - Games start with **Ranked 1s / 2s / 3s**, **Casual 1s / 2s / 3s** and **Honor Duel**. Add your own and put them in any order in Settings.
 
 ![Day](docs/screenshots/day.png)
+
+### Training timer and in-game overlay
+- Pick what you're training, enter how long, and click **Start timer**. When the time is up it's added to the day by itself, with your description.
+- Pause, resume, finish early (logs the time so far) or cancel from the top bar.
+- While Rocket League is running, a small **overlay at the top of the screen** shows the time left and what it's for, with a pause button that doesn't take focus away from the game.
+- The overlay works with Rocket League in **Borderless** or **Windowed** mode. In exclusive Fullscreen, Windows draws the game over every other window, so switch to Borderless (Settings → Video → Display mode) to see it. Drawing inside a fullscreen game would mean hooking into the game process, which anti-cheat doesn't allow. You can turn the overlay off or move it in **Settings → Timer & in-game overlay**.
 
 ### Automatic game logging
 RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.com/developer/stats-api) to log your games for you while the app is running, even when it's minimized to the tray.
@@ -106,6 +120,28 @@ Bump `version` in `package.json`, commit, and run `npm run release`. It tags the
 | `src/shared` | Data model and Rocket League playlist list |
 | `tests` | Unit tests |
 | `.github/workflows` | Windows + Linux builds and releases |
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). *(Applied for; Windows releases are signed from the first release after approval.)*
+
+- Committers and reviewers: [GAGBI123](https://github.com/GAGBI123)
+- Approvers: [GAGBI123](https://github.com/GAGBI123)
+
+Every release is built by GitHub Actions from the source code in this repository (see `.github/workflows/build.yml`), and every signing request is approved by hand.
+
+## Privacy policy
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. In detail:
+
+- **Your journal stays on your computer.** There is no account, no telemetry and no analytics.
+- **Rocket League Stats API:** to log games, the app connects to the game's Stats API on your own computer (`localhost`). This connection never leaves your PC. You can turn it off in **Accounts & Sync**.
+- **Updates:** every few hours the app asks GitHub (github.com) whether a newer version exists, and downloads it from there. Like any download, GitHub sees your IP address ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)). Nothing about you or your journal is sent. You can turn automatic checks off in **Settings → Updates**.
+- **Game config:** the app changes Rocket League's `TAStatsAPI.ini` / `DefaultStatsAPI.ini` only when you click **Enable Stats API**, and keeps a backup of the original file.
+
+## License
+
+[MIT](LICENSE) © GAGBI123
 
 ---
 

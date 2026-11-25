@@ -35,6 +35,11 @@ const api = {
   onUpdateStatus: on('update:status'),
   onBeforeUpdate: on('app:before-update'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
+  timerGet: () => ipcRenderer.invoke('timer:get'),
+  timerStart: (t: unknown) => ipcRenderer.invoke('timer:start', t),
+  timerControl: (action: string) => ipcRenderer.invoke('timer:control', action),
+  onTimerState: on('timer:state'),
+  onTimerComplete: on('timer:complete'),
 };
 
 contextBridge.exposeInMainWorld('rlj', api);

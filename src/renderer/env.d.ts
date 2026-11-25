@@ -1,4 +1,5 @@
-import type { LiveMatchResult, LiveStatus, LocalPlayer, StatsApiSetupResult, UpdateStatus } from '../shared/model';
+import type { LiveMatchResult, LiveStatus, LocalPlayer, MainSettings, StatsApiSetupResult, UpdateStatus } from '../shared/model';
+import type { TimerAction, TimerCompletion, TimerStart, TimerState } from '../shared/timer';
 
 export interface StatsApiStatus {
   found: boolean;
@@ -28,7 +29,7 @@ declare global {
       statsApiChooseDir(): Promise<string | null>;
       statsApiReveal(file: string): Promise<void>;
       notify(n: { title: string; body: string }): Promise<void>;
-      applySettings(s: { closeToTray: boolean; startWithWindows: boolean; autoUpdate: boolean }): Promise<void>;
+      applySettings(s: MainSettings): Promise<void>;
       version(): Promise<string>;
       appInfo(): Promise<{ version: string; platform: string }>;
       platform: string;
@@ -38,6 +39,11 @@ declare global {
       onUpdateStatus(cb: (s: UpdateStatus) => void): () => void;
       onBeforeUpdate(cb: () => void): () => void;
       openExternal(url: string): Promise<void>;
+      timerGet(): Promise<TimerState | null>;
+      timerStart(t: TimerStart): Promise<TimerState>;
+      timerControl(action: TimerAction): Promise<TimerState | null>;
+      onTimerState(cb: (t: TimerState | null) => void): () => void;
+      onTimerComplete(cb: (c: TimerCompletion) => void): () => void;
     };
   }
 }

@@ -2,7 +2,7 @@
 import type { Activity, AppData, Day, Entry, MatchRecord, Measure, Season, Section } from '../../shared/model';
 import { addDays, diffDays, formatDate, todayISO, weekStart, weekdayIndex, WEEKDAYS_LONG } from './dates';
 import { fmtMinutes, fmtNum, fmtPct, plural } from './format';
-import { isHonorDuel, seasonLabel, sectionActivities, sortedSections } from './journal';
+import { childSections, descendantSectionIds, isHonorDuel, seasonLabel, sectionActivities, sectionById, sectionLabel, sectionPath, sortedSections } from './journal';
 import { HONOR_DUEL_KEY } from '../../shared/playlists';
 
 export type Scope = { kind: 'all' } | { kind: 'season'; seasonId: string };
@@ -46,7 +46,7 @@ export interface StatDef {
   compute: (ctx: StatsCtx) => StatValue | null;
 }
 
-export const CATEGORIES = ['Overview', 'Training', 'Games', 'Consistency', 'Records', 'Activities', 'Live games'] as const;
+export const CATEGORIES = ['Overview', 'Training', 'Games', 'Sections', 'Consistency', 'Records', 'Activities', 'Live games'] as const;
 export type StatCategory = (typeof CATEGORIES)[number];
 
 // ---------------------------------------------------------------- context
@@ -88,7 +88,14 @@ const isHonor: Pred = (f) => f.activity?.key === HONOR_DUEL_KEY;
 const isRanked: Pred = (f) => !!f.activity?.key?.startsWith('ranked-');
 const isCasual: Pred = (f) => !!f.activity?.key?.startsWith('casual-');
 const ofActivity = (id: string): Pred => (f) => f.entry.activityId === id;
-const ofSection = (id: string): Pred => (f) => f.section?.id === id;
+/** Entries in a section or any section inside it. */
+const inTree = (ids: Set<string>): Pred => (f) => !!f.section && ids.has(f.section.id);
+
+/** "Flicks" for top-level activities, "Freeplay › Flicks" inside a sub-section. */
+export function shortActivityName(data: AppData, a: Activity) {
+  const sec = sectionById(data, a.sectionId);
+  return sec?.parentId ? `${sec.name} › ${a.name}` : a.name;
+}
 
 const val = (f: FlatEntry, m: Measure) =>
   f.entry.measure !== m ? 0 : m === 'time' ? f.entry.minutes ?? 0 : f.entry.amount ?? 0;
@@ -220,8 +227,9 @@ const STATIC: StatDef[] = [
     label: 'Time by section',
     category: 'Overview',
     compute: (c) => {
-      const breakdown = sortedSections(c.data)
-        .map((s) => ({ s, t: sum(where(c, ofSection(s.id)), 'time') }))
+      // Top-level sections, each including the sections inside it.
+      const breakdown = childSections(c.data, undefined)
+        .map((s) => ({ s, t: sum(where(c, inTree(descendantSectionIds(c.data, s.id))), 'time') }))
         .filter((x) => x.t > 0)
         .map((x) => ({ label: x.s.name, value: fmtMinutes(x.t), raw: x.t, color: x.s.color }));
       return breakdown.length ? { value: fmtMinutes(breakdown.reduce((a, b) => a + b.raw, 0)), breakdown } : empty();
@@ -323,7 +331,7 @@ const STATIC: StatDef[] = [
       const breakdown = [...map]
         .filter(([, t]) => t > 0)
         .sort((a, b) => b[1] - a[1])
-        .map(([a, t]) => ({ label: a.name, value: fmtMinutes(t), raw: t }));
+        .map(([a, t]) => ({ label: shortActivityName(c.data, a), value: fmtMinutes(t), raw: t }));
       return breakdown.length ? { value: breakdown[0].label, sub: 'most trained', breakdown } : empty();
     },
   },
@@ -698,7 +706,8 @@ function activityStats(data: AppData): StatDef[] {
   const out: StatDef[] = [];
   for (const section of sortedSections(data)) {
     for (const a of sectionActivities(data, section.id)) {
-      const group = `${section.name} · ${a.name}`;
+      const group = `${sectionLabel(data, section.id)} · ${a.name}`;
+      const name = shortActivityName(data, a);
       const games = section.kind === 'games';
       const list = (c: StatsCtx) => where(c, ofActivity(a.id));
       const measuresUsed = (c: StatsCtx) => {
@@ -710,7 +719,7 @@ function activityStats(data: AppData): StatDef[] {
       out.push(
         {
           id: `act:${a.id}:time`,
-          label: `${a.name} — total time`,
+          label: `${name} — total time`,
           category: 'Activities',
           group,
           compute: (c) => {
@@ -721,7 +730,7 @@ function activityStats(data: AppData): StatDef[] {
         },
         {
           id: `act:${a.id}:amount`,
-          label: games ? `${a.name} — games played` : `${a.name} — total amount`,
+          label: games ? `${name} — games played` : `${name} — total amount`,
           category: 'Activities',
           group,
           compute: (c) => {
@@ -732,7 +741,7 @@ function activityStats(data: AppData): StatDef[] {
         },
         {
           id: `act:${a.id}:dailyAvg`,
-          label: `${a.name} — daily average`,
+          label: `${name} — daily average`,
           category: 'Activities',
           group,
           hint: 'Across all days so far',
@@ -745,7 +754,7 @@ function activityStats(data: AppData): StatDef[] {
         },
         {
           id: `act:${a.id}:activeAvg`,
-          label: `${a.name} — average per day done`,
+          label: `${name} — average per day done`,
           category: 'Activities',
           group,
           compute: (c) => {
@@ -759,7 +768,7 @@ function activityStats(data: AppData): StatDef[] {
         },
         {
           id: `act:${a.id}:best`,
-          label: `${a.name} — best day`,
+          label: `${name} — best day`,
           category: 'Activities',
           group,
           compute: (c) => {
@@ -773,7 +782,7 @@ function activityStats(data: AppData): StatDef[] {
       if (games) {
         out.push({
           id: `act:${a.id}:winRate`,
-          label: `${a.name} — win rate`,
+          label: `${name} — win rate`,
           category: 'Activities',
           group,
           compute: (c) => {
@@ -787,29 +796,84 @@ function activityStats(data: AppData): StatDef[] {
   return out;
 }
 
+/**
+ * Stats per section, counting everything inside it (sections inside sections included):
+ * total time / amount, daily average and a split by what's directly inside.
+ */
 function sectionStats(data: AppData): StatDef[] {
-  return data.sections
-    .filter((s) => s.kind !== 'training' && s.kind !== 'games')
-    .flatMap((s): StatDef[] => [
+  const out: StatDef[] = [];
+  for (const s of sortedSections(data)) {
+    const subs = childSections(data, s.id);
+    if (s.builtIn && !subs.length) continue; // Training / Games are covered by their own stats
+    const path = sectionPath(data, s.id);
+    const label = sectionLabel(data, s.id);
+    const group = path[0]?.name ?? s.name;
+    const games = s.kind === 'games';
+    const list = (c: StatsCtx) => where(c, inTree(descendantSectionIds(c.data, s.id)));
+    out.push(
       {
         id: `sec:${s.id}:time`,
-        label: `${s.name} — total time`,
-        category: 'Overview',
+        label: `${label} — total time`,
+        category: 'Sections',
+        group,
+        hint: subs.length ? 'Includes the sections inside it' : undefined,
         compute: (c) => {
-          const t = sum(where(c, ofSection(s.id)), 'time');
-          return t ? { value: fmtMinutes(t), sub: `daily avg ${fmtMinutes(t / days(c))}` } : empty('0m');
+          const l = list(c);
+          const t = sum(l, 'time');
+          if (!t && games) return null;
+          return t ? { value: fmtMinutes(t), sub: `${plural(byDate(l, 'time').size, 'day')} · daily avg ${fmtMinutes(t / days(c))}` } : empty('0m');
         },
       },
       {
         id: `sec:${s.id}:amount`,
-        label: `${s.name} — total amount`,
-        category: 'Overview',
+        label: games ? `${label} — games played` : `${label} — total amount`,
+        category: 'Sections',
+        group,
         compute: (c) => {
-          const n = sum(where(c, ofSection(s.id)), 'amount');
-          return n ? { value: fmtNum(n) } : null;
+          const n = sum(list(c), 'amount');
+          return n ? { value: fmtNum(n), sub: `${plural(byDate(list(c), 'amount').size, 'day')}` } : null;
         },
       },
-    ]);
+      {
+        id: `sec:${s.id}:dailyAvg`,
+        label: `${label} — daily average time`,
+        category: 'Sections',
+        group,
+        hint: 'Across all days so far',
+        compute: (c) => {
+          const t = sum(list(c).filter((f) => f.date <= c.today), 'time');
+          return t ? { value: fmtMinutes(t / days(c)), sub: `over ${plural(c.elapsedDates.length, 'day')}` } : null;
+        },
+      },
+      {
+        id: `sec:${s.id}:split`,
+        label: `${label} — split`,
+        category: 'Sections',
+        group,
+        hint: 'What the time inside this section went to',
+        compute: (c) => {
+          const m: Measure = games ? 'amount' : 'time';
+          const parts = [
+            ...childSections(c.data, s.id).map((sub) => ({
+              label: sub.name,
+              raw: sum(where(c, inTree(descendantSectionIds(c.data, sub.id))), m),
+              color: sub.color,
+            })),
+            ...sectionActivities(c.data, s.id).map((a) => ({ label: a.name, raw: sum(where(c, ofActivity(a.id)), m), color: undefined as string | undefined })),
+          ].filter((x) => x.raw > 0);
+          if (parts.length < 2) return null;
+          const total = parts.reduce((x, y) => x + y.raw, 0);
+          parts.sort((a, b) => b.raw - a.raw);
+          return {
+            value: fmt(m, total, games ? ' games' : ''),
+            sub: `most: ${parts[0].label}`,
+            breakdown: parts.map((x) => ({ label: x.label, value: `${fmt(m, x.raw)} · ${fmtPct(x.raw / total)}`, raw: x.raw })),
+          };
+        },
+      },
+    );
+  }
+  return out;
 }
 
 export function allStats(data: AppData): StatDef[] {

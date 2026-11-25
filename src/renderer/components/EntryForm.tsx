@@ -1,8 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock, Hash, Layers, Plus, Save, Sparkles, Trophy } from 'lucide-react';
+import { ChevronRight, Clock, Folder, FolderPlus, Hash, Layers, Plus, Save, Sparkles, Timer, Trophy } from 'lucide-react';
 import { useStore } from '../store';
-import { NumberInput, Segmented } from './ui';
-import { activityById, addToDay, findDayEntry, findOrCreateActivity, findSeason, mergeInto, sectionActivities, sortedSections } from '../lib/journal';
+import { confirmDialog, NumberInput, Segmented } from './ui';
+import {
+  activityById,
+  activityToSection,
+  addToDay,
+  childSections,
+  createSection,
+  findDayEntry,
+  findOrCreateActivity,
+  findSeason,
+  mergeInto,
+  sectionActivities,
+  sectionLabel,
+  sectionPath,
+  sortedSections,
+} from '../lib/journal';
 import { compareEntry } from '../lib/compare';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import type { Day, Entry, Measure, Season, TimeUnit } from '../../shared/model';
@@ -48,6 +62,9 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
 
   const section = sections.find((s) => s.id === sectionId);
   const isGames = section?.kind === 'games';
+  const roots = childSections(data, undefined);
+  const path = section ? sectionPath(data, section.id) : [];
+  const subSections = section ? childSections(data, section.id) : [];
 
   // The user's order from Settings (built-in modes first, newest last by default).
   const activities = sectionActivities(data, sectionId);
@@ -75,7 +92,36 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     setSectionId(id);
     setActivityId(null);
     setCreating(false);
+    setNewSection(null);
     lastSectionId = id;
+  };
+
+  // New section inside the current one, right from the form.
+  const [newSection, setNewSection] = useState<string | null>(null);
+  const sameNameActivity =
+    newSection !== null && newSection.trim()
+      ? activities.find((a) => a.name.trim().toLowerCase() === newSection.trim().toLowerCase())
+      : undefined;
+  const addSection = () => {
+    const name = newSection?.trim();
+    if (!name || !section) return;
+    const existingSub = subSections.find((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (existingSub) {
+      pickSection(existingSub.id);
+      return;
+    }
+    let createdId = '';
+    mutate((d) => {
+      const twin = d.activities.find((a) => a.sectionId === section.id && a.name.trim().toLowerCase() === name.toLowerCase());
+      const created = twin ? activityToSection(d, twin.id) : createSection(d, name, section.color, section.id);
+      if (created) createdId = created.id;
+    });
+    toast({
+      kind: 'success',
+      title: `Section ${sectionLabel(useStore.getState().data, createdId)} added`,
+      body: sameNameActivity ? 'Your earlier time is under Overall.' : 'Add the things you do in it with “New”.',
+    });
+    if (createdId) pickSection(createdId);
   };
 
   const num = Number(value);
@@ -162,6 +208,50 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     props.onDone?.();
   };
 
+  // ---- Timer: count the time down now and log it when it ends.
+  const activeTimer = useStore((s) => s.timer);
+  const canTime = !editing && measure === 'time';
+  const startTimer = async () => {
+    if (!valid || !section || measure !== 'time') return;
+    if (activeTimer) {
+      const ok = await confirmDialog({
+        title: 'Replace the running timer?',
+        body: `The timer for ${activeTimer.activityName} stops without being logged.`,
+        confirmLabel: 'Start new timer',
+      });
+      if (!ok) return;
+    }
+    let actId = activityId ?? '';
+    mutate((d) => {
+      const activity =
+        creating && newName.trim() ? findOrCreateActivity(d, section.id, newName, 'time', unit) : d.activities.find((a) => a.id === activityId)!;
+      activity.defaultMeasure = 'time';
+      activity.defaultUnit = unit;
+      actId = activity.id;
+    });
+    const fresh = useStore.getState().data;
+    const act = activityById(fresh, actId);
+    if (!act) return;
+    await window.rlj.timerStart({
+      activityId: act.id,
+      activityName: act.name,
+      label: `${sectionLabel(fresh, act.sectionId)} · ${act.name}`,
+      color: section.color,
+      seasonId: season.id,
+      dayId: day.id,
+      date: day.date,
+      durationMs: Math.round(base * 60_000),
+      unit,
+      note: note.trim() || undefined,
+    });
+    setCreating(false);
+    setNewName('');
+    setActivityId(act.id);
+    setValue('');
+    setNote('');
+    toast({ kind: 'info', title: `Timer started: ${fmtMinutes(base)} ${act.name}`, body: 'It’s added to the day when it ends. Pause it from the top bar or the in-game overlay.' });
+  };
+
   const fmtM = (v: number | undefined) => (v === undefined ? '—' : measure === 'time' ? fmtMinutes(v) : fmtNum(v, 1));
 
   return (
@@ -171,10 +261,10 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
           <span className="n">1</span> Section
         </div>
         <div className="chips">
-          {sections.map((s) => (
+          {roots.map((s) => (
             <button
               key={s.id}
-              className={`chip ${s.id === sectionId ? 'on' : ''}`}
+              className={`chip ${path[0]?.id === s.id ? 'on' : ''}`}
               style={{ ['--chip-color' as any]: s.color }}
               onClick={() => pickSection(s.id)}
             >
@@ -189,7 +279,30 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
         <div className="step-label">
           <span className="n">2</span> {isGames ? 'Mode' : 'What did you do?'}
         </div>
+        {path.length > 1 && (
+          <div className="crumbs-inline">
+            {path.map((p, i) => (
+              <span key={p.id} className="row" style={{ gap: 4, display: 'inline-flex' }}>
+                {i > 0 && <ChevronRight size={13} className="muted" />}
+                {i < path.length - 1 ? (
+                  <button className="crumb-btn" onClick={() => pickSection(p.id)}>
+                    {p.name}
+                  </button>
+                ) : (
+                  <b>{p.name}</b>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="chips">
+          {subSections.map((s) => (
+            <button key={s.id} className="chip folder" style={{ ['--chip-color' as any]: s.color }} onClick={() => pickSection(s.id)} title={`Open ${sectionLabel(data, s.id)}`}>
+              <Folder size={14} />
+              {s.name}
+              <ChevronRight size={13} />
+            </button>
+          ))}
           {activities.map((a) => (
             <button
               key={a.id}
@@ -213,7 +326,41 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
           >
             <Plus size={14} /> New
           </button>
+          <button
+            className={`chip dashed ${newSection !== null ? 'on' : ''}`}
+            style={{ ['--chip-color' as any]: section?.color }}
+            title={`Add a section inside ${section?.name ?? 'this section'}`}
+            onClick={() => setNewSection(newSection === null ? '' : null)}
+          >
+            <FolderPlus size={14} /> Section
+          </button>
         </div>
+        {newSection !== null && (
+          <div className="stack" style={{ gap: 6 }}>
+            <div className="row">
+              <input
+                className="input"
+                autoFocus
+                placeholder={`New section inside ${section?.name ?? ''}, e.g. Freeplay`}
+                value={newSection}
+                onChange={(e) => setNewSection(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addSection();
+                  if (e.key === 'Escape') setNewSection(null);
+                }}
+              />
+              <button className="btn" disabled={!newSection.trim()} onClick={addSection}>
+                Create
+              </button>
+            </div>
+            {sameNameActivity && (
+              <div className="tiny muted">
+                “{sameNameActivity.name}” is already an activity here. It becomes the section, and what you logged so far moves to{' '}
+                {sameNameActivity.name} › Overall.
+              </div>
+            )}
+          </div>
+        )}
         {creating && (
           <input
             className={`input ${nameTaken ? 'invalid' : ''}`}
@@ -344,10 +491,27 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       )}
       {creating && newName.trim() && <div className="muted small">First time logging “{newName.trim()}” — nothing to compare yet.</div>}
 
-      <button className="btn primary large" disabled={!valid} onClick={submit}>
-        {editing ? <Save size={17} /> : isGames ? <Trophy size={17} /> : <Plus size={17} />}
-        {editing ? 'Save changes' : existing ? 'Add to today’s total' : 'Add to day'}
-      </button>
+      <div className={canTime ? 'btn-pair' : undefined}>
+        <button className="btn primary large" disabled={!valid} onClick={submit}>
+          {editing ? <Save size={17} /> : isGames ? <Trophy size={17} /> : <Plus size={17} />}
+          {editing ? 'Save changes' : existing ? 'Add to today’s total' : 'Add to day'}
+        </button>
+        {canTime && (
+          <button
+            className="btn large"
+            disabled={!valid}
+            onClick={startTimer}
+            title="Count down this time now. When it ends, it's added to the day by itself."
+          >
+            <Timer size={17} /> Start timer
+          </button>
+        )}
+      </div>
+      {canTime && activeTimer && (
+        <div className="tiny muted">
+          A timer is running for {activeTimer.activityName}. Starting a new one replaces it.
+        </div>
+      )}
     </div>
   );
 }

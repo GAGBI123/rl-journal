@@ -26,6 +26,7 @@ export class Updater {
   private auto = true;
   private installWhenReady = false;
   private timer: NodeJS.Timeout | null = null;
+  private firstCheck: NodeJS.Timeout | null = null;
   private quietTimer: NodeJS.Timeout | null = null;
   private lastCheck?: string;
   readonly supported: boolean;
@@ -93,15 +94,23 @@ export class Updater {
     this.hooks.onStatus(s);
   }
 
-  /** auto = download and install by itself; otherwise only announce. */
-  configure(auto: boolean) {
+  /**
+   * auto = download and install by itself; otherwise only announce.
+   * checks = look for new versions on a schedule; off = only when the user clicks "Check for updates".
+   */
+  configure(auto: boolean, checks = true) {
     this.auto = auto;
     if (!this.supported) return;
     autoUpdater.autoDownload = auto;
     if (auto && this.status.state === 'downloaded') this.scheduleQuietInstall();
-    if (!this.timer) {
-      setTimeout(() => void this.check(), 15000);
+    if (checks && !this.timer) {
+      this.firstCheck = setTimeout(() => void this.check(), 15000);
       this.timer = setInterval(() => void this.check(), CHECK_EVERY_MS);
+    } else if (!checks && this.timer) {
+      clearInterval(this.timer);
+      if (this.firstCheck) clearTimeout(this.firstCheck);
+      this.timer = null;
+      this.firstCheck = null;
     }
   }
 

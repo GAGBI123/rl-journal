@@ -2,6 +2,7 @@ import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 
 import { ArrowLeft, BarChart3, Bell, CheckCircle2, House, Info, Link2, Settings, TriangleAlert, X } from 'lucide-react';
 import { useStore, type View } from './store';
 import { ConfirmHost } from './components/ui';
+import { TimerPill } from './components/TimerPill';
 import { HomePage } from './pages/HomePage';
 import { SeasonPage } from './pages/SeasonPage';
 import { DayPage } from './pages/DayPage';
@@ -79,6 +80,7 @@ function LivePill() {
   const who = player ? accountForPlayer(accounts, player)?.label ?? player.name : '';
   let label: string;
   if (status.state === 'waiting') label = 'Game: waiting';
+  else if (status.inMatch && status.playlistId === undefined) label = `In match${who ? ` · ${who}` : ''}`;
   else if (status.inMatch) {
     const info = playlistInfo(status.playlistId);
     const where = status.playlistId === undefined ? '' : info.kind === 'practice' ? info.mode : `${info.mode}`;
@@ -234,6 +236,7 @@ function TopBar() {
       </div>
       <div className="spacer" />
       <UpdatePill />
+      <TimerPill />
       <LivePill />
       <Notifications />
     </header>

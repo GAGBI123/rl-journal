@@ -20,6 +20,13 @@ export default defineConfig({
   build: {
     outDir: `${root}dist`,
     emptyOutDir: true,
+    rollupOptions: {
+      // The app window and the in-game timer overlay.
+      input: {
+        main: `${root}src/renderer/index.html`,
+        overlay: `${root}src/renderer/overlay.html`,
+      },
+    },
   },
   test: {
     root,

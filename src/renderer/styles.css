@@ -1998,3 +1998,136 @@ textarea.input.desc {
   background: #3987e5;
   color: #fff;
 }
+
+/* ---- 1.2: sections inside sections, timers ---- */
+
+.chip.folder {
+  border-style: solid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.chip.folder svg:first-child {
+  color: var(--chip-color, var(--blue));
+}
+
+.crumbs-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-bottom: 2px;
+}
+
+.crumb-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+}
+
+.crumb-btn:hover {
+  text-decoration: underline;
+}
+
+.btn-pair {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.sub-section {
+  margin-top: 14px;
+  padding: 10px 0 2px 12px;
+  border-left: 2px solid var(--sub-color, var(--border-strong));
+}
+
+.timer-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--t-color) 45%, transparent);
+  background: color-mix(in srgb, var(--t-color) 14%, transparent);
+  color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.timer-pill.paused {
+  border-color: rgba(250, 178, 25, 0.45);
+  background: rgba(250, 178, 25, 0.08);
+}
+
+.timer-pill .tp-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 8px 0 10px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.timer-pill .tp-time {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-pill .tp-name {
+  color: var(--text-2);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timer-pill .tp-btn {
+  height: 100%;
+  width: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.timer-pill .tp-btn:hover,
+.timer-pill .tp-main:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.timer-pop {
+  width: 320px;
+  padding: 14px;
+}
+
+.tp-big {
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+
+.tp-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--panel-2);
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.tp-bar > div {
+  height: 100%;
+  background: var(--blue);
+}

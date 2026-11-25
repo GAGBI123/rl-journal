@@ -8,7 +8,10 @@ import { Updater } from './updater';
 import { integrateAppImage, setLinuxAutostart } from './linux';
 import { log } from './log';
 import { scheduleRelaunchAfterWindowsUpdate } from './relaunch';
-import type { LiveMatchResult } from '../shared/model';
+import type { LiveMatchResult, MainSettings } from '../shared/model';
+import type { TimerCompletion } from '../shared/timer';
+import { TimerService } from './timer';
+import { OverlayManager } from './overlay';
 import { playlistInfo } from '../shared/playlists';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
@@ -20,6 +23,7 @@ let quitting = false;
 let closeToTray = true;
 let rendererReady = false;
 const pendingMatches: LiveMatchResult[] = [];
+const pendingTimerCompletions: TimerCompletion[] = [];
 let lastQuiet: boolean | null = null;
 
 // Lets tests and dev runs use a separate profile instead of the real journal.
@@ -56,12 +60,38 @@ function send(channel: string, payload: unknown) {
 }
 
 const live = new LiveGameClient({
-  onStatus: (s) => send('live:status', s),
+  onStatus: (s) => {
+    send('live:status', s);
+    overlay.update();
+  },
   onPlayers: (p) => send('live:players', p),
   onMatch: (m) => {
     if (rendererReady) send('live:match', m);
     else pendingMatches.push(m);
   },
+});
+
+const timer = new TimerService({
+  onState: (t) => {
+    send('timer:state', t);
+    overlay.update();
+  },
+  onComplete: (c) => {
+    if (rendererReady) send('timer:complete', c);
+    else pendingTimerCompletions.push(c);
+  },
+});
+
+const overlay = new OverlayManager({
+  preload: path.join(__dirname, 'preload.js'),
+  icon: iconPath(),
+  load: (w) => {
+    if (isDev) w.loadURL(new URL('overlay.html', process.env.VITE_DEV_SERVER_URL!).toString());
+    else w.loadFile(path.join(__dirname, '..', 'dist', 'overlay.html'));
+  },
+  mainWindowFocused: () => !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused(),
+  gameConnected: () => live.getStatus().state === 'connected',
+  getTimer: () => timer.get(),
 });
 
 const updater = new Updater({
@@ -140,7 +170,10 @@ function createWindow(startMode: StartMode = 'show') {
   win.on('closed', () => {
     win = null;
     rendererReady = false;
+    // The overlay window would otherwise keep the app alive.
+    if (!quitting && (!tray || !closeToTray)) app.quit();
   });
+  for (const ev of ['focus', 'blur', 'show', 'hide', 'minimize', 'restore'] as const) win.on(ev as any, () => overlay.update());
   win.webContents.on('did-start-loading', () => {
     rendererReady = false;
   });
@@ -213,6 +246,7 @@ function registerIpc() {
     rendererReady = true;
     const queued = pendingMatches.splice(0);
     for (const m of queued) send('live:match', m);
+    for (const c of pendingTimerCompletions.splice(0)) send('timer:complete', c);
     if (smokeTest) {
       // CI check: the window loaded and the app started. Exit cleanly.
       console.log('RLJ_SMOKE_OK');
@@ -245,9 +279,10 @@ function registerIpc() {
     notification.show();
   });
 
-  ipcMain.handle('app:settings', (_e, s: { closeToTray: boolean; startWithWindows: boolean; autoUpdate: boolean }) => {
+  ipcMain.handle('app:settings', (_e, s: MainSettings) => {
     closeToTray = !!s.closeToTray;
-    updater.configure(s.autoUpdate !== false);
+    updater.configure(s.autoUpdate !== false, s.updateChecks !== false);
+    overlay.configure(s.timerOverlay !== false, s.overlayPosition ?? 'top-center');
     if (!app.isPackaged) return;
     if (isWin) app.setLoginItemSettings({ openAtLogin: !!s.startWithWindows, args: ['--hidden'] });
     else void setLinuxAutostart(!!s.startWithWindows);
@@ -259,6 +294,10 @@ function registerIpc() {
   ipcMain.handle('update:get', () => updater.getStatus());
   ipcMain.handle('update:check', () => updater.check());
   ipcMain.handle('update:install', () => updater.installNow());
+
+  ipcMain.handle('timer:get', () => timer.get());
+  ipcMain.handle('timer:start', (_e, t) => timer.start(t));
+  ipcMain.handle('timer:control', (_e, action) => timer.control(action));
 
   ipcMain.handle('shell:open-external', (_e, url: string) => {
     if (/^https:\/\/(www\.)?(rocketleague\.com|github\.com)\//.test(url)) shell.openExternal(url);
@@ -273,6 +312,7 @@ app.on('second-instance', (_e, argv) => {
 
 app.whenReady().then(() => {
   registerIpc();
+  timer.restore();
   const relaunch = takeRelaunchMode();
   log('ready', { relaunch, hidden: process.argv.includes('--hidden'), updated: process.argv.includes('--updated') });
   const startHidden = process.argv.includes('--hidden') || relaunch === 'hidden';
@@ -291,6 +331,7 @@ app.on('before-quit', () => {
   log('before-quit');
   quitting = true;
   live.stop();
+  overlay.destroy();
 });
 
 app.on('window-all-closed', () => {

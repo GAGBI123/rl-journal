@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Clock, Gamepad2, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
 import { useStore } from '../store';
-import { activityById, dayNumber, findSeason, seasonLabel, sortedSections } from '../lib/journal';
+import { activityById, dayNumber, findSeason, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
 import { formatLongDate, todayISO } from '../lib/dates';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import { daySummary } from '../lib/stats';
@@ -144,7 +144,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
               <div className="entry-group" key={section.id}>
                 <div className="g-head">
                   <span className="color-dot" style={{ background: section.color }} />
-                  {section.name}
+                  {sectionLabel(data, section.id)}
                   <span className="muted" style={{ fontWeight: 500 }}>· {entries.length}</span>
                 </div>
                 {entries.map((e) => {
