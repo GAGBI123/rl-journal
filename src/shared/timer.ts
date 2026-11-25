@@ -12,9 +12,12 @@ export interface TimerStart {
   seasonId: string;
   dayId: string;
   date: string;
+  /** Countdown length; 0 for a stopwatch. */
   durationMs: number;
   unit: TimeUnit;
   note?: string;
+  /** 'down' = timer that ends by itself (default), 'up' = stopwatch you stop when you're done. */
+  mode?: 'down' | 'up';
 }
 
 export interface TimerState extends TimerStart {
@@ -42,6 +45,15 @@ export function elapsedMs(t: TimerState, now = Date.now()) {
 
 export function remainingMs(t: TimerState, now = Date.now()) {
   return Math.max(0, t.durationMs - elapsedMs(t, now));
+}
+
+export function isCountUp(t: Pick<TimerState, 'mode'>) {
+  return t.mode === 'up';
+}
+
+/** What to show: time left for a timer, time so far for a stopwatch. */
+export function displayMs(t: TimerState, now = Date.now()) {
+  return isCountUp(t) ? elapsedMs(t, now) : remainingMs(t, now);
 }
 
 export function isRunning(t: TimerState) {

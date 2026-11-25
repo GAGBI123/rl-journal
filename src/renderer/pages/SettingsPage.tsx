@@ -30,6 +30,14 @@ const HOTKEYS = [
   { value: '', label: 'Off' },
 ];
 
+const FINISH_HOTKEYS = [
+  { value: 'Control+Alt+O', label: 'Ctrl + Alt + O' },
+  { value: 'Control+Shift+O', label: 'Ctrl + Shift + O' },
+  { value: 'Alt+O', label: 'Alt + O' },
+  { value: 'F10', label: 'F10' },
+  { value: '', label: 'Off' },
+];
+
 function countEntries(data: ReturnType<typeof useStore.getState>['data'], pred: (activityId: string) => boolean) {
   let n = 0;
   for (const s of data.seasons) for (const d of s.days) for (const e of d.entries) if (pred(e.activityId)) n++;
@@ -594,7 +602,7 @@ export function SettingsPage() {
       </div>
       <div className="card">
         <div className="muted small" style={{ marginBottom: 6 }}>
-          <Timer size={13} style={{ verticalAlign: -2 }} /> Start a timer from any day: pick what you're doing, enter the time and click <b>Start timer</b>. When it ends it's added to that day by itself.
+          <Timer size={13} style={{ verticalAlign: -2 }} /> On any day, pick what you're doing, then click <b>Timer</b> (counts down the time you enter and logs it when it ends) or <b>Stopwatch</b> (counts up until you stop it, then logs the time).
         </div>
         <Toggle
           title="Show the timer on top of Rocket League"
@@ -628,6 +636,19 @@ export function SettingsPage() {
           </div>
           <select className="input" style={{ width: 170 }} value={settings.timerHotkey} onChange={(e) => set('timerHotkey', e.target.value)}>
             {HOTKEYS.map((h) => (
+              <option key={h.value} value={h.value}>
+                {h.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start' }}>
+          <div style={{ paddingRight: 16 }}>
+            <div style={{ fontWeight: 500 }}>Done shortcut</div>
+            <div className="muted small">Stops the stopwatch (or ends a timer early) and logs the time so far. Also works in game.</div>
+          </div>
+          <select className="input" style={{ width: 170 }} value={settings.timerFinishHotkey} onChange={(e) => set('timerFinishHotkey', e.target.value)}>
+            {FINISH_HOTKEYS.map((h) => (
               <option key={h.value} value={h.value}>
                 {h.label}
               </option>

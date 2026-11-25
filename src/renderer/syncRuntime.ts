@@ -64,6 +64,7 @@ export function startSyncRuntime() {
       timerOverlay: s.timerOverlay,
       overlayPosition: s.overlayPosition,
       timerHotkey: s.timerHotkey,
+      timerFinishHotkey: s.timerFinishHotkey,
     };
     const key = JSON.stringify([s.liveGameEnabled, s.liveGamePort, main]);
     if (key === lastKey) return;
@@ -99,7 +100,8 @@ export function logTimer(c: TimerCompletion) {
     target = { seasonId: season.id, dayId: day.id };
   });
   const tgt = target as { seasonId: string; dayId: string } | null;
-  const title = c.early ? `Timer stopped: ${fmtMinutes(c.minutes)} ${c.timer.activityName} logged` : `Timer done: ${fmtMinutes(c.minutes)} ${c.timer.activityName} logged`;
+  const what = c.timer.mode === 'up' ? 'Stopwatch stopped' : c.early ? 'Timer stopped' : 'Timer done';
+  const title = `${what}: ${fmtMinutes(c.minutes)} ${c.timer.activityName} logged`;
   if (!tgt) {
     toast({ kind: 'error', title: 'Timer finished but not logged', body: 'Its day or activity no longer exists, and no active season covers that date.' });
     return;

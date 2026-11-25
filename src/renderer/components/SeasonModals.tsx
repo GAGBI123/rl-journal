@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { Field, Modal, NumberInput, Toggle } from './ui';
-import { addDaysToSeason, createSeason, DEFAULT_SEASON_DAYS, findSeason, seasonLabel } from '../lib/journal';
+import { createSeason, DEFAULT_SEASON_DAYS, findSeason, seasonLabel, closeSeason } from '../lib/journal';
 import { todayISO } from '../lib/dates';
 import type { Season } from '../../shared/model';
 
@@ -125,72 +125,28 @@ export function EditSeasonModal({ season, onClose }: { season: Season; onClose: 
   );
 }
 
-export function AddDaysModal({ season, onClose }: { season: Season; onClose: () => void }) {
-  const mutate = useStore((s) => s.mutate);
-  const toast = useStore((s) => s.toast);
-  const [count, setCount] = useState('7');
-  const n = Math.floor(Number(count));
-  const valid = n >= 1 && n <= 200;
-  const submit = () => {
-    if (!valid) return;
-    mutate((d) => {
-      const s = findSeason(d, season.id);
-      if (s) addDaysToSeason(s, n);
-    });
-    toast({ kind: 'success', title: `Added ${n} day${n === 1 ? '' : 's'} to ${seasonLabel(season)}` });
-    onClose();
-  };
-  return (
-    <Modal
-      title="Add days"
-      subtitle={`New days are added after the last day (currently ${season.days.length} days).`}
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" disabled={!valid} onClick={submit}>
-            Add {valid ? n : ''} day{n === 1 ? '' : 's'}
-          </button>
-        </>
-      }
-    >
-      <Field label="How many days?">
-        <NumberInput value={count} onChange={setCount} big autoFocus onEnter={submit} />
-      </Field>
-      <div className="chips">
-        {[1, 7, 14, 30].map((x) => (
-          <button key={x} className={`chip ${n === x ? 'on' : ''}`} onClick={() => setCount(String(x))}>
-            +{x}
-          </button>
-        ))}
-      </div>
-    </Modal>
-  );
-}
-
 export function CloseSeasonModal({ season, onClose }: { season: Season; onClose: () => void }) {
   const mutate = useStore((s) => s.mutate);
   const toast = useStore((s) => s.toast);
   const today = todayISO();
-  const futureEmpty = season.days.filter((d) => d.date > today && d.entries.length === 0).length;
-  const [trim, setTrim] = useState(futureEmpty > 0);
+  // Closing removes the days that haven't happened yet (unless something was logged on them).
+  const remaining = season.days.filter((d) => d.date > today && d.entries.length === 0 && !d.note?.trim()).length;
   const submit = () => {
+    let removed = 0;
     mutate((d) => {
-      const s = findSeason(d, season.id);
-      if (!s) return;
-      s.status = 'closed';
-      s.closedAt = new Date().toISOString();
-      if (trim) s.days = s.days.filter((x) => !(x.date > today && x.entries.length === 0));
+      removed = closeSeason(d, season.id, today);
     });
-    toast({ kind: 'success', title: `${seasonLabel(season)} closed`, body: 'It now shows as completed on your home screen.' });
+    toast({
+      kind: 'success',
+      title: `${seasonLabel(season)} closed`,
+      body: `It now shows as completed on your home screen.${removed ? ` ${removed} remaining day${removed === 1 ? ' was' : 's were'} removed.` : ''}`,
+    });
     onClose();
   };
   return (
     <Modal
       title={`Close ${seasonLabel(season)}?`}
-      subtitle="The season will be marked as over and shown as completed. You can reopen it later."
+      subtitle="The season is marked as over and shown as completed. You can reopen it later."
       onClose={onClose}
       footer={
         <>
@@ -203,16 +159,11 @@ export function CloseSeasonModal({ season, onClose }: { season: Season; onClose:
         </>
       }
     >
-      {futureEmpty > 0 ? (
-        <Toggle
-          title={`Delete the ${futureEmpty} remaining day${futureEmpty === 1 ? '' : 's'}`}
-          desc="Removes empty days after today, for seasons that ended early."
-          on={trim}
-          onChange={setTrim}
-        />
-      ) : (
-        <div className="muted small">All {season.days.length} days are kept.</div>
-      )}
+      <div className="muted small">
+        {remaining > 0
+          ? `The ${remaining} remaining day${remaining === 1 ? '' : 's'} after today will be removed. Everything you logged stays.`
+          : `All ${season.days.length} days and everything you logged stay.`}
+      </div>
     </Modal>
   );
 }

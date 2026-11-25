@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import type { OverlayPosition } from '../shared/model';
 import type { TimerState } from '../shared/timer';
 
-const WIDTH = 330;
+const WIDTH = 372;
 const HEIGHT = 92;
 
 export interface OverlayHooks {

@@ -168,6 +168,8 @@ export interface Settings {
   overlayPosition: OverlayPosition;
   /** Global shortcut that pauses / resumes the timer, also while in game ('' = off). Electron accelerator. */
   timerHotkey: string;
+  /** Global shortcut that stops the timer / stopwatch and logs the time so far ('' = off). */
+  timerFinishHotkey: string;
   /** Play a short sound when a timer finishes. */
   timerSound: boolean;
   /** Players seen in the last live match, used for "that's me" linking. */
@@ -189,6 +191,7 @@ export interface MainSettings {
   timerOverlay: boolean;
   overlayPosition: OverlayPosition;
   timerHotkey: string;
+  timerFinishHotkey: string;
 }
 
 export interface AppData {

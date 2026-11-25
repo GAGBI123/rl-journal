@@ -74,20 +74,28 @@ const live = new LiveGameClient({
 // Pause / resume hotkey: registered only while a timer exists, so it works in game (where the
 // game captures the mouse and clicks can't reach the overlay) without blocking the keys otherwise.
 let timerHotkey = 'Control+Alt+P';
+let finishHotkey = 'Control+Alt+O';
 let registeredHotkey = '';
-function syncHotkey() {
-  const want = timer.get() && timerHotkey ? timerHotkey : '';
-  if (want === registeredHotkey) return;
-  if (registeredHotkey) globalShortcut.unregister(registeredHotkey);
-  registeredHotkey = '';
-  if (!want) return;
+let registeredFinish = '';
+function registerKey(want: string, current: string, action: () => void): string {
+  if (want === current) return current;
+  if (current) globalShortcut.unregister(current);
+  if (!want) return '';
   try {
-    if (globalShortcut.register(want, () => timer.control('toggle'))) registeredHotkey = want;
-    else log('timer hotkey is taken by another app', want);
+    if (globalShortcut.register(want, action)) return want;
+    log('timer hotkey is taken by another app', want);
   } catch (err) {
     log('timer hotkey invalid', want, String(err));
   }
+  return '';
 }
+function syncHotkey() {
+  const active = !!timer.get();
+  registeredHotkey = registerKey(active ? timerHotkey : '', registeredHotkey, () => timer.control('toggle'));
+  const fin = active && finishHotkey !== timerHotkey ? finishHotkey : '';
+  registeredFinish = registerKey(fin, registeredFinish, () => timer.control('finish'));
+}
+const keyLabel = (k: string) => k.replace('Control', 'Ctrl').split('+').join(' + ');
 
 const timer = new TimerService({
   onState: (t) => {
@@ -111,7 +119,8 @@ const overlay = new OverlayManager({
   mainWindowFocused: () => !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused(),
   gameConnected: () => live.getStatus().state === 'connected',
   getTimer: () => timer.get(),
-  hint: () => (registeredHotkey ? `${registeredHotkey.replace('Control', 'Ctrl').split('+').join(' + ')}: pause / resume` : ''),
+  hint: () =>
+    [registeredHotkey && `${keyLabel(registeredHotkey)}: pause`, registeredFinish && `${keyLabel(registeredFinish)}: done`].filter(Boolean).join(' · '),
 });
 
 const updater = new Updater({
@@ -303,6 +312,7 @@ function registerIpc() {
     closeToTray = !!s.closeToTray;
     updater.configure(s.autoUpdate !== false, s.updateChecks !== false);
     timerHotkey = typeof s.timerHotkey === 'string' ? s.timerHotkey : 'Control+Alt+P';
+    finishHotkey = typeof s.timerFinishHotkey === 'string' ? s.timerFinishHotkey : 'Control+Alt+O';
     syncHotkey();
     overlay.configure(s.timerOverlay !== false, s.overlayPosition ?? 'top-center');
     if (!app.isPackaged) return;

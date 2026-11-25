@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Clock, Folder, FolderPlus, Hash, Layers, Plus, Save, Sparkles, Timer, Trophy } from 'lucide-react';
+import { ChevronRight, Clock, Folder, FolderPlus, Hash, Layers, Plus, Save, Sparkles, Timer, Trophy, Watch } from 'lucide-react';
 import { useStore } from '../store';
 import { confirmDialog, NumberInput, Segmented } from './ui';
 import {
@@ -211,12 +211,13 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   // ---- Timer: count the time down now and log it when it ends.
   const activeTimer = useStore((s) => s.timer);
   const canTime = !editing && measure === 'time';
-  const startTimer = async () => {
-    if (!valid || !section || measure !== 'time') return;
+  const startTimer = async (mode: 'down' | 'up') => {
+    if (!section || measure !== 'time' || !hasActivity) return;
+    if (mode === 'down' && !valid) return;
     if (activeTimer) {
       const ok = await confirmDialog({
-        title: 'Replace the running timer?',
-        body: `The timer for ${activeTimer.activityName} stops without being logged.`,
+        title: `Replace the running ${activeTimer.mode === 'up' ? 'stopwatch' : 'timer'}?`,
+        body: `The ${activeTimer.mode === 'up' ? 'stopwatch' : 'timer'} for ${activeTimer.activityName} stops without being logged.`,
         confirmLabel: 'Start new timer',
       });
       if (!ok) return;
@@ -240,16 +241,21 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       seasonId: season.id,
       dayId: day.id,
       date: day.date,
-      durationMs: Math.round(base * 60_000),
-      unit,
+      durationMs: mode === 'up' ? 0 : Math.round(base * 60_000),
+      unit: mode === 'up' ? 'min' : unit,
       note: note.trim() || undefined,
+      mode,
     });
     setCreating(false);
     setNewName('');
     setActivityId(act.id);
     setValue('');
     setNote('');
-    toast({ kind: 'info', title: `Timer started: ${fmtMinutes(base)} ${act.name}`, body: 'It’s added to the day when it ends. Pause it from the top bar or the in-game overlay.' });
+    toast(
+      mode === 'up'
+        ? { kind: 'info', title: `Stopwatch started: ${act.name}`, body: 'Stop it when you’re done (top bar, the ✓ on the in-game overlay, or Ctrl + Alt + O) and the time is added to the day.' }
+        : { kind: 'info', title: `Timer started: ${fmtMinutes(base)} ${act.name}`, body: 'It’s added to the day when it ends. Pause it from the top bar or the in-game overlay.' },
+    );
   };
 
   const fmtM = (v: number | undefined) => (v === undefined ? '—' : measure === 'time' ? fmtMinutes(v) : fmtNum(v, 1));
@@ -491,25 +497,33 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       )}
       {creating && newName.trim() && <div className="muted small">First time logging “{newName.trim()}” — nothing to compare yet.</div>}
 
-      <div className={canTime ? 'btn-pair' : undefined}>
-        <button className="btn primary large" disabled={!valid} onClick={submit}>
-          {editing ? <Save size={17} /> : isGames ? <Trophy size={17} /> : <Plus size={17} />}
-          {editing ? 'Save changes' : existing ? 'Add to today’s total' : 'Add to day'}
-        </button>
-        {canTime && (
+      <button className="btn primary large" disabled={!valid} onClick={submit}>
+        {editing ? <Save size={17} /> : isGames ? <Trophy size={17} /> : <Plus size={17} />}
+        {editing ? 'Save changes' : existing ? 'Add to today’s total' : 'Add to day'}
+      </button>
+      {canTime && (
+        <div className="btn-pair even">
           <button
-            className="btn large"
+            className="btn"
             disabled={!valid}
-            onClick={startTimer}
-            title="Count down this time now. When it ends, it's added to the day by itself."
+            onClick={() => startTimer('down')}
+            title={base > 0 ? `Count down ${fmtMinutes(base)} now. When it ends, it's added to the day by itself.` : 'Enter a time first'}
           >
-            <Timer size={17} /> Start timer
+            <Timer size={16} /> {base > 0 ? `Timer · ${fmtMinutes(base)}` : 'Timer'}
           </button>
-        )}
-      </div>
+          <button
+            className="btn"
+            disabled={!hasActivity}
+            onClick={() => startTimer('up')}
+            title="Count up from 0 while you train. Stop it when you're done and the time is added to the day."
+          >
+            <Watch size={16} /> Stopwatch
+          </button>
+        </div>
+      )}
       {canTime && activeTimer && (
         <div className="tiny muted">
-          A timer is running for {activeTimer.activityName}. Starting a new one replaces it.
+          A {activeTimer.mode === 'up' ? 'stopwatch' : 'timer'} is running for {activeTimer.activityName}. Starting a new one replaces it.
         </div>
       )}
     </div>

@@ -31,6 +31,9 @@
         color: #eef2fa;
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
       }
+      .state.sw {
+        color: #8fd0a8;
+      }
       .pill.paused {
         border-color: rgba(250, 178, 25, 0.5);
       }
@@ -119,6 +122,7 @@
         <div class="hint hidden" id="hint"></div>
       </div>
       <button id="toggle" title="Pause / resume" aria-label="Pause or resume the timer"></button>
+      <button id="done" title="Done: stop and log the time" aria-label="Stop and log the time"><svg viewBox="0 0 24 24"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 11-11-1.4-1.4z"/></svg></button>
     </div>
     <script type="module" src="./overlay.ts"></script>
   </body>

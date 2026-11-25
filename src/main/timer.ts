@@ -5,6 +5,7 @@ import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   earlyMinutes,
+  isCountUp,
   isRunning,
   pauseTimer,
   remainingMs,
@@ -51,13 +52,13 @@ export class TimerService {
     const now = Date.now();
     this.timer = {
       ...input,
-      durationMs: Math.max(1000, Math.round(input.durationMs)),
+      durationMs: input.mode === 'up' ? 0 : Math.max(1000, Math.round(input.durationMs)),
       id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       startedAt: now,
       accumulatedMs: 0,
       createdAt: now,
     };
-    log('timer started', { activity: input.activityName, minutes: Math.round(input.durationMs / 60000) });
+    log('timer started', { activity: input.activityName, mode: input.mode ?? 'down', minutes: Math.round(input.durationMs / 60000) });
     this.changed();
     return this.timer;
   }
@@ -113,7 +114,7 @@ export class TimerService {
     if (this.endTimeout) clearTimeout(this.endTimeout);
     this.endTimeout = null;
     const t = this.timer;
-    if (!t || !isRunning(t)) return;
+    if (!t || !isRunning(t) || isCountUp(t)) return; // a stopwatch only ends when you stop it
     const left = remainingMs(t);
     if (left <= 0) return this.complete();
     // Timers can drift over long waits; re-check at most every minute.

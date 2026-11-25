@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timerOverlay: true,
   overlayPosition: 'top-center',
   timerHotkey: 'Control+Alt+P',
+  timerFinishHotkey: 'Control+Alt+O',
   timerSound: true,
 };
 
@@ -302,6 +303,49 @@ export function dayNumber(season: Season, day: Day): number {
 export function addDaysToSeason(season: Season, n: number) {
   const last = season.days[season.days.length - 1]?.date ?? addDays(season.startDate, -1);
   season.days.push(...makeDays(addDays(last, 1), n));
+}
+
+const dayHasContent = (d: Day) => d.entries.length > 0 || !!d.note?.trim();
+
+/** Empty a day (its entries, notes and tracked matches). The day itself stays: days are only removed from the end. */
+export function clearDay(data: AppData, seasonId: string, dayId: string) {
+  const day = findSeason(data, seasonId)?.days.find((d) => d.id === dayId);
+  if (!day) return 0;
+  const n = day.entries.length;
+  day.entries = [];
+  delete day.note;
+  delete day.hideRecord;
+  data.matches = data.matches.filter((m) => m.dayId !== dayId);
+  return n;
+}
+
+/** Remove the season's last day (the only day that can be removed). */
+export function removeLastDay(data: AppData, seasonId: string): Day | null {
+  const season = findSeason(data, seasonId);
+  const last = season?.days[season.days.length - 1];
+  if (!season || !last) return null;
+  season.days.pop();
+  data.matches = data.matches.filter((m) => m.dayId !== last.id);
+  return last;
+}
+
+/** Add one day after the season's last day. */
+export function addOneDay(data: AppData, seasonId: string): Day | null {
+  const season = findSeason(data, seasonId);
+  if (!season) return null;
+  addDaysToSeason(season, 1);
+  return season.days[season.days.length - 1];
+}
+
+/** Close a season: mark it completed and remove the remaining days after today (any with content are kept). */
+export function closeSeason(data: AppData, seasonId: string, today = todayISO()) {
+  const season = findSeason(data, seasonId);
+  if (!season) return 0;
+  season.status = 'closed';
+  season.closedAt = new Date().toISOString();
+  const before = season.days.length;
+  season.days = season.days.filter((d) => d.date <= today || dayHasContent(d));
+  return before - season.days.length;
 }
 
 export function seasonLabel(season: Season): string {

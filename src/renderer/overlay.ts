@@ -1,5 +1,5 @@
 // In-game timer overlay: shows the running timer and lets you pause / resume it.
-import { elapsedMs, fmtClock, isRunning, remainingMs, type TimerState } from '../shared/timer';
+import { displayMs, elapsedMs, fmtClock, isCountUp, isRunning, type TimerState } from '../shared/timer';
 
 const $ = (id: string) => document.getElementById(id)!;
 const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -18,10 +18,17 @@ function render() {
   pill.classList.toggle('paused', !running);
   pill.style.setProperty('--c', timer.color ?? '#3b82f6');
   $('label').textContent = timer.label;
-  $('time').textContent = fmtClock(remainingMs(timer));
-  $('state').classList.toggle('hidden', running);
-  const pct = Math.min(100, (elapsedMs(timer) / Math.max(1, timer.durationMs)) * 100);
+  const up = isCountUp(timer);
+  $('time').textContent = fmtClock(displayMs(timer));
+  // Paused shows PAUSED; a running stopwatch shows STOPWATCH so it's clear the time counts up.
+  const state = $('state');
+  state.textContent = running ? 'STOPWATCH' : 'PAUSED';
+  state.classList.toggle('sw', running);
+  state.classList.toggle('hidden', running && !up);
+  const pct = up ? 100 : Math.min(100, (elapsedMs(timer) / Math.max(1, timer.durationMs)) * 100);
   ($('bar') as HTMLDivElement).style.width = `${pct}%`;
+  ($('bar') as HTMLDivElement).style.opacity = up ? '0.35' : '1';
+  $('done').title = up ? 'Stop and log the time' : 'Finish now and log the time so far';
   const btn = $('toggle');
   const icon = running ? PAUSE : PLAY;
   if (btn.innerHTML !== icon) btn.innerHTML = icon;
@@ -36,6 +43,14 @@ $('toggle').addEventListener('pointerdown', (e) => {
   if (now - lastPress < 400) return;
   lastPress = now;
   void window.rlj.timerControl('toggle');
+});
+
+$('done').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const now = Date.now();
+  if (now - lastPress < 400) return;
+  lastPress = now;
+  void window.rlj.timerControl('finish');
 });
 
 window.rlj.onOverlayHint((hint) => {
