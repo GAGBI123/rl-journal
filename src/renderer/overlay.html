@@ -100,6 +100,11 @@
         height: 16px;
         fill: currentColor;
       }
+      .hint {
+        font-size: 10.5px;
+        color: #8d9ab3;
+        margin-top: 3px;
+      }
       .hidden {
         display: none;
       }
@@ -111,6 +116,7 @@
         <div class="label"><span class="dot"></span><span id="label"></span></div>
         <div class="time"><span id="time">0:00</span><span class="state hidden" id="state">PAUSED</span></div>
         <div class="bar"><div id="bar" style="width: 0%"></div></div>
+        <div class="hint hidden" id="hint"></div>
       </div>
       <button id="toggle" title="Pause / resume" aria-label="Pause or resume the timer"></button>
     </div>

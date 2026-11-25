@@ -28,8 +28,19 @@ function render() {
   btn.title = running ? 'Pause' : 'Resume';
 }
 
-$('toggle').addEventListener('click', () => {
+// React on press, not click: while the game has focus it can swallow the mouse release.
+let lastPress = 0;
+$('toggle').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const now = Date.now();
+  if (now - lastPress < 400) return;
+  lastPress = now;
   void window.rlj.timerControl('toggle');
+});
+
+window.rlj.onOverlayHint((hint) => {
+  $('hint').textContent = hint;
+  $('hint').classList.toggle('hidden', !hint);
 });
 
 window.rlj.onTimerState((t) => {

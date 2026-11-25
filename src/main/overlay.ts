@@ -7,7 +7,7 @@ import type { OverlayPosition } from '../shared/model';
 import type { TimerState } from '../shared/timer';
 
 const WIDTH = 330;
-const HEIGHT = 78;
+const HEIGHT = 92;
 
 export interface OverlayHooks {
   preload: string;
@@ -17,6 +17,8 @@ export interface OverlayHooks {
   /** True when the Stats API connection reports the game (cheap, no polling needed). */
   gameConnected: () => boolean;
   getTimer: () => TimerState | null;
+  /** e.g. "Ctrl + Alt + P to pause" */
+  hint: () => string;
 }
 
 /** Is RocketLeague.exe running? (also under Proton / Wine on Linux) */
@@ -72,7 +74,10 @@ export class OverlayManager {
     } else if (this.win?.isVisible()) {
       this.win.hide();
     }
-    if (this.win && !this.win.isDestroyed()) this.win.webContents.send('timer:state', timer);
+    if (this.win && !this.win.isDestroyed()) {
+      this.win.webContents.send('timer:state', timer);
+      this.win.webContents.send('overlay:hint', this.hooks.hint());
+    }
   }
 
   private async checkGame() {
@@ -109,7 +114,10 @@ export class OverlayManager {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
-    win.webContents.once('did-finish-load', () => win.webContents.send('timer:state', this.hooks.getTimer()));
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.send('timer:state', this.hooks.getTimer());
+      win.webContents.send('overlay:hint', this.hooks.hint());
+    });
     win.on('closed', () => {
       if (this.win === win) this.win = null;
     });

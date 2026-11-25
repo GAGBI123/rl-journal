@@ -40,6 +40,7 @@ const api = {
   timerControl: (action: string) => ipcRenderer.invoke('timer:control', action),
   onTimerState: on('timer:state'),
   onTimerComplete: on('timer:complete'),
+  onOverlayHint: on('overlay:hint'),
 };
 
 contextBridge.exposeInMainWorld('rlj', api);

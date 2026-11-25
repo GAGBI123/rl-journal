@@ -164,6 +164,8 @@ export interface Settings {
   /** Show the small timer overlay on top of Rocket League while a timer runs. */
   timerOverlay: boolean;
   overlayPosition: OverlayPosition;
+  /** Global shortcut that pauses / resumes the timer, also while in game ('' = off). Electron accelerator. */
+  timerHotkey: string;
   /** Play a short sound when a timer finishes. */
   timerSound: boolean;
   /** Players seen in the last live match, used for "that's me" linking. */
@@ -184,6 +186,7 @@ export interface MainSettings {
   updateChecks: boolean;
   timerOverlay: boolean;
   overlayPosition: OverlayPosition;
+  timerHotkey: string;
 }
 
 export interface AppData {

@@ -60,6 +60,7 @@ Your journal is never replaced, not by updates and not by running the installer 
 - Pick what you're training, enter how long, and click **Start timer**. When the time is up it's added to the day by itself, with your description.
 - Pause, resume, finish early (logs the time so far) or cancel from the top bar.
 - While Rocket League is running, a small **overlay at the top of the screen** shows the time left and what it's for, with a pause button that doesn't take focus away from the game.
+- Press **Ctrl + Alt + P** to pause or resume the timer, also while you're in game (the game keeps the mouse to itself, so this is the surest way). Pick another key or turn it off in Settings.
 - The overlay works with Rocket League in **Borderless** or **Windowed** mode. In exclusive Fullscreen, Windows draws the game over every other window, so switch to Borderless (Settings → Video → Display mode) to see it. Drawing inside a fullscreen game would mean hooking into the game process, which anti-cheat doesn't allow. You can turn the overlay off or move it in **Settings → Timer & in-game overlay**.
 
 ### Automatic game logging

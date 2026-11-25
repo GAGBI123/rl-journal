@@ -44,6 +44,7 @@ declare global {
       timerControl(action: TimerAction): Promise<TimerState | null>;
       onTimerState(cb: (t: TimerState | null) => void): () => void;
       onTimerComplete(cb: (c: TimerCompletion) => void): () => void;
+      onOverlayHint(cb: (hint: string) => void): () => void;
     };
   }
 }

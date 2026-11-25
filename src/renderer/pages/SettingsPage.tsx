@@ -21,6 +21,15 @@ import { relativeTime } from '../lib/dates';
 import { uid } from '../lib/format';
 import type { Measure, Section } from '../../shared/model';
 
+const HOTKEYS = [
+  { value: 'Control+Alt+P', label: 'Ctrl + Alt + P' },
+  { value: 'Control+Shift+P', label: 'Ctrl + Shift + P' },
+  { value: 'Alt+P', label: 'Alt + P' },
+  { value: 'F8', label: 'F8' },
+  { value: 'F9', label: 'F9' },
+  { value: '', label: 'Off' },
+];
+
 function countEntries(data: ReturnType<typeof useStore.getState>['data'], pred: (activityId: string) => boolean) {
   let n = 0;
   for (const s of data.seasons) for (const d of s.days) for (const e of d.entries) if (pred(e.activityId)) n++;
@@ -610,6 +619,21 @@ export function SettingsPage() {
             />
           </div>
         )}
+        <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start' }}>
+          <div style={{ paddingRight: 16 }}>
+            <div style={{ fontWeight: 500 }}>Pause / resume shortcut</div>
+            <div className="muted small">
+              Works while you're in game, where the game keeps the mouse to itself. It's only active while a timer runs.
+            </div>
+          </div>
+          <select className="input" style={{ width: 170 }} value={settings.timerHotkey} onChange={(e) => set('timerHotkey', e.target.value)}>
+            {HOTKEYS.map((h) => (
+              <option key={h.value} value={h.value}>
+                {h.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <Toggle title="Play a sound when a timer ends" on={settings.timerSound} onChange={(v) => set('timerSound', v)} />
       </div>
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
 import { promises as fs, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { getDataFolder, loadData, saveData } from './storage';
@@ -71,9 +71,28 @@ const live = new LiveGameClient({
   },
 });
 
+// Pause / resume hotkey: registered only while a timer exists, so it works in game (where the
+// game captures the mouse and clicks can't reach the overlay) without blocking the keys otherwise.
+let timerHotkey = 'Control+Alt+P';
+let registeredHotkey = '';
+function syncHotkey() {
+  const want = timer.get() && timerHotkey ? timerHotkey : '';
+  if (want === registeredHotkey) return;
+  if (registeredHotkey) globalShortcut.unregister(registeredHotkey);
+  registeredHotkey = '';
+  if (!want) return;
+  try {
+    if (globalShortcut.register(want, () => timer.control('toggle'))) registeredHotkey = want;
+    else log('timer hotkey is taken by another app', want);
+  } catch (err) {
+    log('timer hotkey invalid', want, String(err));
+  }
+}
+
 const timer = new TimerService({
   onState: (t) => {
     send('timer:state', t);
+    syncHotkey();
     overlay.update();
   },
   onComplete: (c) => {
@@ -92,6 +111,7 @@ const overlay = new OverlayManager({
   mainWindowFocused: () => !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused(),
   gameConnected: () => live.getStatus().state === 'connected',
   getTimer: () => timer.get(),
+  hint: () => (registeredHotkey ? `${registeredHotkey.replace('Control', 'Ctrl').split('+').join(' + ')}: pause / resume` : ''),
 });
 
 const updater = new Updater({
@@ -282,6 +302,8 @@ function registerIpc() {
   ipcMain.handle('app:settings', (_e, s: MainSettings) => {
     closeToTray = !!s.closeToTray;
     updater.configure(s.autoUpdate !== false, s.updateChecks !== false);
+    timerHotkey = typeof s.timerHotkey === 'string' ? s.timerHotkey : 'Control+Alt+P';
+    syncHotkey();
     overlay.configure(s.timerOverlay !== false, s.overlayPosition ?? 'top-center');
     if (!app.isPackaged) return;
     if (isWin) app.setLoginItemSettings({ openAtLogin: !!s.startWithWindows, args: ['--hidden'] });
@@ -313,6 +335,7 @@ app.on('second-instance', (_e, argv) => {
 app.whenReady().then(() => {
   registerIpc();
   timer.restore();
+  syncHotkey();
   const relaunch = takeRelaunchMode();
   log('ready', { relaunch, hidden: process.argv.includes('--hidden'), updated: process.argv.includes('--updated') });
   const startHidden = process.argv.includes('--hidden') || relaunch === 'hidden';
@@ -332,6 +355,7 @@ app.on('before-quit', () => {
   quitting = true;
   live.stop();
   overlay.destroy();
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {

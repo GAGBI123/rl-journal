@@ -7,3 +7,4 @@ release/
 .DS_Store
 release-dist/
 dev-app-update.yml
+CLAUDE.md

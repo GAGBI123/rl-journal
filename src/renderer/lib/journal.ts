@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateChecks: true,
   timerOverlay: true,
   overlayPosition: 'top-center',
+  timerHotkey: 'Control+Alt+P',
   timerSound: true,
 };
 

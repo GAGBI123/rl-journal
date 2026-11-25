@@ -63,6 +63,7 @@ export function startSyncRuntime() {
       updateChecks: s.updateChecks,
       timerOverlay: s.timerOverlay,
       overlayPosition: s.overlayPosition,
+      timerHotkey: s.timerHotkey,
     };
     const key = JSON.stringify([s.liveGameEnabled, s.liveGamePort, main]);
     if (key === lastKey) return;
