@@ -1,6 +1,5 @@
 // Training timer: shared by the main process (which owns it), the app window and the overlay.
 // All times are wall-clock based so a timer keeps counting through app restarts and updates.
-import type { TimeUnit } from './model';
 
 export interface TimerStart {
   activityId: string;
@@ -14,10 +13,11 @@ export interface TimerStart {
   date: string;
   /** Countdown length; 0 for a stopwatch. */
   durationMs: number;
-  unit: TimeUnit;
   note?: string;
   /** 'down' = timer that ends by itself (default), 'up' = stopwatch you stop when you're done. */
   mode?: 'down' | 'up';
+  /** Set when the timer runs an item of a routine started on that day. */
+  routine?: { dayRoutineId: string; itemId: string };
 }
 
 export interface TimerState extends TimerStart {
@@ -33,11 +33,12 @@ export interface TimerState extends TimerStart {
 export interface TimerCompletion {
   timer: TimerState;
   minutes: number;
-  unit: TimeUnit;
   early: boolean;
 }
 
 export type TimerAction = 'pause' | 'resume' | 'toggle' | 'finish' | 'cancel';
+/** Where a timer command came from (written to the log, to tell what works in game). */
+export type TimerSource = 'app' | 'overlay' | 'hotkey';
 
 export function elapsedMs(t: TimerState, now = Date.now()) {
   return Math.max(0, t.accumulatedMs + (t.startedAt !== null ? now - t.startedAt : 0));

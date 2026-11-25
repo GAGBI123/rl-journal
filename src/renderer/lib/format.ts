@@ -1,14 +1,15 @@
+/** Minutes as days, hours and minutes, showing only the parts that are there: 45m · 1h 5m · 2d 3h · 1d 20m. */
 export function fmtMinutes(min: number | undefined | null): string {
   if (min === undefined || min === null || !Number.isFinite(min)) return '—';
   const total = Math.round(min);
   if (total === 0) return '0m';
   const sign = total < 0 ? '-' : '';
   const abs = Math.abs(total);
-  const h = Math.floor(abs / 60);
+  const d = Math.floor(abs / 1440);
+  const h = Math.floor((abs % 1440) / 60);
   const m = abs % 60;
-  if (!h) return `${sign}${m}m`;
-  if (!m) return `${sign}${h}h`;
-  return `${sign}${h}h ${m}m`;
+  const parts = [d && `${d}d`, h && `${h}h`, m && `${m}m`].filter(Boolean);
+  return sign + parts.join(' ');
 }
 
 export function fmtNum(n: number | undefined | null, digits = 0): string {

@@ -41,7 +41,7 @@ describe('sections inside sections', () => {
 
   it('turns the Freeplay activity into a section and keeps what was logged under Overall', () => {
     const { data, day } = setup();
-    addToDay(day(TODAY), { activityId: 'act-freeplay', measure: 'time', minutes: 40, unit: 'min' });
+    addToDay(day(TODAY), { activityId: 'act-freeplay', measure: 'time', minutes: 40 });
     const sec = activityToSection(data, 'act-freeplay')!;
     expect(sec.name).toBe('Freeplay');
     expect(sec.parentId).toBe('sec-training');
@@ -54,10 +54,10 @@ describe('sections inside sections', () => {
     const { data, day } = setup();
     const fp = activityToSection(data, 'act-freeplay')!;
     const flicks = findOrCreateActivity(data, fp.id, 'Flicks', 'time');
-    addToDay(day(TODAY), { activityId: 'act-freeplay', measure: 'time', minutes: 30, unit: 'min' });
-    addToDay(day(TODAY), { activityId: flicks.id, measure: 'time', minutes: 15, unit: 'min' });
+    addToDay(day(TODAY), { activityId: 'act-freeplay', measure: 'time', minutes: 30 });
+    addToDay(day(TODAY), { activityId: flicks.id, measure: 'time', minutes: 15 });
     const other = findOrCreateActivity(data, 'sec-training', 'Workshop', 'time');
-    addToDay(day(TODAY), { activityId: other.id, measure: 'time', minutes: 20, unit: 'min' });
+    addToDay(day(TODAY), { activityId: other.id, measure: 'time', minutes: 20 });
 
     const ctx = buildContext(data, { kind: 'all' }, TODAY);
     const v = (id: string) => statById(data, id)!.compute(ctx)!;
@@ -76,7 +76,7 @@ describe('sections inside sections', () => {
     const fp = createSection(data, 'Freeplay', '#fff', 'sec-training');
     const inner = createSection(data, 'Inner', '#fff', fp.id);
     const a = findOrCreateActivity(data, inner.id, 'Flicks', 'time');
-    addToDay(day(TODAY), { activityId: a.id, measure: 'time', minutes: 10, unit: 'min' });
+    addToDay(day(TODAY), { activityId: a.id, measure: 'time', minutes: 10 });
     expect(deleteSectionTree(data, fp.id)).toBe(1);
     expect(data.sections.some((s) => s.id === fp.id || s.id === inner.id)).toBe(false);
     expect(day(TODAY).entries).toHaveLength(0);
@@ -122,7 +122,6 @@ describe('training timer', () => {
     dayId: 'd',
     date: TODAY,
     durationMs: 30 * 60_000,
-    unit: 'min',
     startedAt: 1_000_000,
     accumulatedMs: 0,
     createdAt: 1_000_000,

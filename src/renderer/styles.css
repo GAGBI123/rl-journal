@@ -2193,3 +2193,224 @@ textarea.input.desc {
 .btn-pair.even {
   grid-template-columns: 1fr 1fr;
 }
+
+/* ---- 1.4: minutes input, running timer card, routines, shortcut recorder ---- */
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge.green {
+  background: rgba(34, 179, 90, 0.14);
+  color: #6fd59a;
+  border-color: rgba(34, 179, 90, 0.3);
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
+.input-suffix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-suffix .input {
+  padding-right: 78px;
+}
+
+.input-suffix .suffix {
+  position: absolute;
+  right: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.input-suffix.small-suffix .input {
+  padding-right: 40px;
+}
+
+.input-suffix.small-suffix .suffix {
+  right: 10px;
+  font-size: 12px;
+}
+
+.small-input {
+  height: 32px;
+  font-size: 12.5px;
+}
+
+.running-timer {
+  margin-bottom: 14px;
+  border-color: color-mix(in srgb, var(--t-color) 45%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--t-color) 12%, transparent), transparent 70%), var(--panel);
+}
+
+.running-timer.paused {
+  border-color: rgba(250, 178, 25, 0.45);
+}
+
+.running-timer .rt-name {
+  font-weight: 600;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.running-timer .rt-time {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.running-timer .row.wrap {
+  margin-top: 10px !important;
+}
+
+.routine-card {
+  margin-bottom: 14px;
+}
+
+.routine-card.complete {
+  border-color: rgba(34, 179, 90, 0.35);
+}
+
+.routine-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.routine-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--e-color, var(--border-strong));
+  background: var(--panel-2);
+}
+
+.routine-item.live {
+  background: color-mix(in srgb, var(--e-color, var(--blue)) 14%, var(--panel-2));
+}
+
+.routine-item.done .ri-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.routine-item .check {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border-strong);
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.routine-item .check:hover {
+  border-color: var(--good);
+}
+
+.routine-item .check.on {
+  background: var(--good);
+  border-color: var(--good);
+}
+
+.routine-item .ri-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routine-item .ri-time {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.routine-item .live-clock {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.routine-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+
+.routine-grid {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.routine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.routine-list .rl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.routine-edit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+
+.routine-edit-row > .muted {
+  padding-top: 9px;
+}
+
+.routine-edit-row .icon-btn {
+  width: 26px;
+  height: 26px;
+}
+
+.shortcut-input {
+  flex: 0 0 auto;
+}
+
+.shortcut-key {
+  min-width: 150px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.shortcut-key.recording {
+  border-color: var(--blue);
+  color: var(--text);
+  background: rgba(57, 135, 229, 0.14);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  50% {
+    box-shadow: 0 0 0 3px rgba(57, 135, 229, 0.25);
+  }
+}

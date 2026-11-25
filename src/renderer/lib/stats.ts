@@ -259,7 +259,7 @@ const STATIC: StatDef[] = [
     hint: 'Every activity in the Training section',
     compute: (c) => {
       const t = sum(where(c, isTraining), 'time');
-      return t ? { value: fmtMinutes(t), sub: `${(t / 60).toFixed(1)} hours` } : empty('0m');
+      return t ? { value: fmtMinutes(t), sub: `${fmtNum(Math.round(t))} minutes · ${plural(measured(where(c, isTraining), 'time').length, 'session')}` } : empty('0m');
     },
   },
   {

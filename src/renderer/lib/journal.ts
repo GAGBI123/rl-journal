@@ -1,5 +1,18 @@
 // Pure operations on the journal data (no React). Mutating helpers take a draft copy.
-import { DATA_VERSION, type Activity, type AppData, type Day, type Entry, type Measure, type Season, type Section, type Settings, type TimeUnit } from '../../shared/model';
+import {
+  DATA_VERSION,
+  type Activity,
+  type AppData,
+  type Day,
+  type DayRoutine,
+  type Entry,
+  type Measure,
+  type Routine,
+  type RoutineItem,
+  type Season,
+  type Section,
+  type Settings,
+} from '../../shared/model';
 import { DEFAULT_GAME_MODES, HONOR_DUEL_KEY, keyForLegacyName, playlistInfo, PRACTICE_MODE_NAMES } from '../../shared/playlists';
 import { addDays, diffDays, todayISO } from './dates';
 import { uid } from './format';
@@ -48,7 +61,6 @@ function gameModeActivity(key: string, name: string, sectionId: string, order: n
     name,
     key,
     defaultMeasure: 'amount',
-    defaultUnit: 'min',
     builtIn: true,
     order,
     createdAt: now,
@@ -63,13 +75,13 @@ export function createDefaultData(): AppData {
     version: DATA_VERSION,
     seasons: [],
     sections: [training, games],
+    routines: [],
     activities: [
       {
         id: 'act-freeplay',
         sectionId: training.id,
         name: 'Freeplay',
         defaultMeasure: 'time',
-        defaultUnit: 'min',
         builtIn: true,
         order: 0,
         createdAt: now,
@@ -95,6 +107,7 @@ export function normalizeData(raw: any): AppData {
     seasons: raw.seasons ?? [],
     sections: Array.isArray(raw.sections) && raw.sections.length ? raw.sections : base.sections,
     activities: Array.isArray(raw.activities) ? raw.activities : base.activities,
+    routines: Array.isArray(raw.routines) ? raw.routines : [],
     accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
     matches: Array.isArray(raw.matches) ? raw.matches : [],
     notifications: Array.isArray(raw.notifications) ? raw.notifications : [],
@@ -105,8 +118,24 @@ export function normalizeData(raw: any): AppData {
 
   for (const s of data.seasons) {
     s.days = (s.days ?? []).map((d: Day) => ({ ...d, entries: d.entries ?? [] }));
+    for (const d of s.days) {
+      // 1.4: times are always minutes (the "hours" unit is gone; minutes were always stored).
+      for (const e of d.entries) delete (e as any).unit;
+      if (d.routines !== undefined) {
+        d.routines = Array.isArray(d.routines) ? d.routines.filter((r) => r && Array.isArray(r.items)) : [];
+        if (!d.routines.length) delete d.routines;
+      }
+    }
     sortDays(s);
   }
+  data.routines = data.routines
+    .filter((r: any) => r && typeof r === 'object')
+    .map((r: any) => ({
+      id: r.id ?? uid(),
+      name: typeof r.name === 'string' && r.name.trim() ? r.name : 'Routine',
+      items: (Array.isArray(r.items) ? r.items : []).filter((i: any) => i && i.activityId && i.minutes > 0).map((i: any) => ({ ...i, id: i.id ?? uid() })),
+      createdAt: r.createdAt ?? new Date().toISOString(),
+    }));
   // Guarantee the two built-in top-level sections exist.
   for (const sec of base.sections) {
     if (!data.sections.some((s) => s.kind === sec.kind && !s.parentId)) data.sections.push(sec);
@@ -139,6 +168,7 @@ export function normalizeData(raw: any): AppData {
   });
   for (const a of data.activities) {
     a.createdAt = a.createdAt ?? new Date().toISOString();
+    delete (a as any).defaultUnit;
   }
   if (fromVersion < 2) migrateToV2(data);
   ensureActivityOrder(data);
@@ -491,7 +521,13 @@ export function deleteSectionTree(data: AppData, sectionId: string) {
   data.activities = data.activities.filter((a) => !acts.has(a.id));
   for (const s of data.seasons) for (const d of s.days) d.entries = d.entries.filter((e) => !acts.has(e.activityId));
   data.matches = data.matches.filter((m) => !acts.has(m.activityId));
+  dropActivitiesFromRoutines(data, acts);
   return acts.size;
+}
+
+/** Deleted activities leave the saved routines (routines already started on a day keep them). */
+export function dropActivitiesFromRoutines(data: AppData, ids: Set<string>) {
+  for (const r of data.routines) r.items = r.items.filter((i) => !ids.has(i.activityId));
 }
 
 /** Move a section among its siblings. */
@@ -580,7 +616,6 @@ export function findOrCreateActivity(
   sectionId: string,
   name: string,
   measure: Measure,
-  unit: TimeUnit = 'min',
   key?: string,
 ): Activity {
   const trimmed = name.trim();
@@ -601,7 +636,6 @@ export function findOrCreateActivity(
     name: trimmed,
     key,
     defaultMeasure: measure,
-    defaultUnit: unit,
     order: nextActivityOrder(data, sectionId),
     createdAt: new Date().toISOString(),
   };
@@ -617,12 +651,11 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Add `add` onto `target` (same activity + measure): times and amounts are summed, results are
- * summed, descriptions are kept. Mixed minutes/hours end up in minutes.
+ * summed, descriptions are kept.
  */
 export function mergeInto(target: Entry, add: EntryInput | Entry) {
   if (target.measure === 'time') {
     target.minutes = round2((target.minutes ?? 0) + (add.minutes ?? 0));
-    if ((target.unit ?? 'min') !== (add.unit ?? 'min')) target.unit = 'min';
   } else {
     target.amount = (target.amount ?? 0) + (add.amount ?? 0);
     if (add.wins !== undefined || add.losses !== undefined) {
@@ -661,11 +694,7 @@ export function entryValue(e: Entry, measure: Measure): number {
 }
 
 export function describeEntry(e: Entry): string {
-  if (e.measure === 'time') {
-    const m = e.minutes ?? 0;
-    if (e.unit === 'hr') return `${+(m / 60).toFixed(2)} ${m === 60 ? 'hour' : 'hours'}`;
-    return `${+m.toFixed(1)} min`;
-  }
+  if (e.measure === 'time') return `${+(e.minutes ?? 0).toFixed(1)} min`;
   return `${e.amount ?? 0}`;
 }
 
@@ -675,4 +704,95 @@ export function isToday(date: string) {
 
 export function newEntry(partial: EntryInput): Entry {
   return { id: uid(), createdAt: new Date().toISOString(), ...partial };
+}
+
+// ---------------------------------------------------------------- routines
+
+export function routineById(data: AppData, id: string) {
+  return data.routines.find((r) => r.id === id);
+}
+
+export function routineMinutes(items: { minutes: number }[]) {
+  return items.reduce((a, i) => a + (i.minutes > 0 ? i.minutes : 0), 0);
+}
+
+/** Save a new routine (items without an activity or time are dropped). */
+export function createRoutine(data: AppData, name: string, items: Omit<RoutineItem, 'id'>[]): Routine {
+  const routine: Routine = {
+    id: uid(),
+    name: name.trim() || 'Routine',
+    items: items.filter((i) => i.activityId && i.minutes > 0).map((i) => ({ ...i, id: uid(), note: i.note?.trim() || undefined })),
+    createdAt: new Date().toISOString(),
+  };
+  data.routines.push(routine);
+  return routine;
+}
+
+/** Start a routine on a day: its items are copied onto the day, ready to be ticked off. */
+export function startRoutineOnDay(day: Day, routine: Routine): DayRoutine {
+  const dr: DayRoutine = {
+    id: uid(),
+    routineId: routine.id,
+    name: routine.name,
+    items: routine.items.map((i) => ({ ...i, id: uid() })),
+    startedAt: new Date().toISOString(),
+    autoNext: true,
+  };
+  day.routines = [...(day.routines ?? []), dr];
+  return dr;
+}
+
+export function findDayRoutine(day: Day, dayRoutineId: string) {
+  return day.routines?.find((r) => r.id === dayRoutineId);
+}
+
+/** The first item that isn't done yet. */
+export function nextRoutineItem(dr: DayRoutine) {
+  return dr.items.find((i) => !i.done);
+}
+
+export function routineProgress(dr: DayRoutine) {
+  const done = dr.items.filter((i) => i.done);
+  return {
+    done: done.length,
+    total: dr.items.length,
+    minutesDone: done.reduce((a, i) => a + (i.loggedMinutes ?? i.minutes), 0),
+    minutesTotal: routineMinutes(dr.items),
+    complete: dr.items.length > 0 && done.length === dr.items.length,
+  };
+}
+
+/**
+ * Tick off a routine item and add its time to the day (`minutes` defaults to the planned time,
+ * a timer passes what was actually done). Returns false if it was already done.
+ */
+export function completeRoutineItem(day: Day, dayRoutineId: string, itemId: string, minutes?: number, note?: string) {
+  const item = findDayRoutine(day, dayRoutineId)?.items.find((i) => i.id === itemId);
+  if (!item || item.done) return false;
+  const m = round2(minutes ?? item.minutes);
+  item.done = true;
+  item.loggedMinutes = m;
+  if (m > 0) addToDay(day, { activityId: item.activityId, measure: 'time', minutes: m, note: note ?? item.note });
+  return true;
+}
+
+/** Untick a routine item and take the time it added off the day again. */
+export function undoRoutineItem(day: Day, dayRoutineId: string, itemId: string) {
+  const item = findDayRoutine(day, dayRoutineId)?.items.find((i) => i.id === itemId);
+  if (!item || !item.done) return false;
+  const m = item.loggedMinutes ?? 0;
+  const entry = findDayEntry(day, item.activityId, 'time');
+  if (entry && m > 0) {
+    entry.minutes = round2(Math.max(0, (entry.minutes ?? 0) - m));
+    if (!entry.minutes && !entry.auto) day.entries = day.entries.filter((e) => e !== entry);
+  }
+  item.done = false;
+  delete item.loggedMinutes;
+  return true;
+}
+
+/** Take a routine off a day. What it already logged stays on the day. */
+export function removeDayRoutine(day: Day, dayRoutineId: string) {
+  day.routines = (day.routines ?? []).filter((r) => r.id !== dayRoutineId);
+  if (!day.routines.length) delete day.routines;
 }

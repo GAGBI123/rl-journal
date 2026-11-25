@@ -19,7 +19,8 @@ import {
 } from '../lib/journal';
 import { compareEntry } from '../lib/compare';
 import { fmtMinutes, fmtNum } from '../lib/format';
-import type { Day, Entry, Measure, Season, TimeUnit } from '../../shared/model';
+import type { Day, Entry, Measure, Season } from '../../shared/model';
+import { shortcutLabel } from '../lib/shortcut';
 
 let lastSectionId: string | null = null;
 
@@ -50,12 +51,9 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [measure, setMeasure] = useState<Measure>(editing?.measure ?? 'time');
-  const [unit, setUnit] = useState<TimeUnit>(editing?.unit ?? 'min');
   const [value, setValue] = useState(() => {
     if (!editing) return '';
-    if (editing.measure === 'amount') return String(editing.amount ?? '');
-    const m = editing.minutes ?? 0;
-    return String(editing.unit === 'hr' ? +(m / 60).toFixed(2) : m);
+    return String((editing.measure === 'amount' ? editing.amount : +(editing.minutes ?? 0).toFixed(2)) ?? '');
   });
   const [wins, setWins] = useState(editing?.wins !== undefined ? String(editing.wins) : '');
   const [note, setNote] = useState(editing?.note ?? '');
@@ -75,7 +73,6 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     const a = activityId ? activityById(data, activityId) : undefined;
     if (a) {
       setMeasure(a.defaultMeasure);
-      setUnit(a.defaultUnit);
     } else if (creating) {
       setMeasure(isGames ? 'amount' : 'time');
     }
@@ -125,7 +122,7 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   };
 
   const num = Number(value);
-  const base = !value || !Number.isFinite(num) ? 0 : measure === 'time' ? (unit === 'hr' ? num * 60 : num) : num;
+  const base = !value || !Number.isFinite(num) ? 0 : num;
   const winsNum = wins === '' ? undefined : Math.floor(Number(wins));
   const winsInvalid = winsNum !== undefined && measure === 'amount' && (!Number.isFinite(winsNum) || winsNum < 0 || winsNum > num);
   const nameTaken =
@@ -157,10 +154,9 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       if (!target) return;
       const activity =
         creating && newName.trim()
-          ? findOrCreateActivity(d, section.id, newName, measure, unit)
+          ? findOrCreateActivity(d, section.id, newName, measure)
           : d.activities.find((a) => a.id === activityId)!;
       activity.defaultMeasure = measure;
-      if (measure === 'time') activity.defaultUnit = unit;
       label = activity.name;
       const old = editing ? target.entries.find((x) => x.id === editing.id) : undefined;
       // Wins given → the other games were losses. Unchanged values keep the recorded results.
@@ -173,8 +169,8 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
           : { wins: undefined, losses: undefined };
       const fields =
         measure === 'time'
-          ? { measure, minutes: +base.toFixed(2), unit, amount: undefined, wins: undefined, losses: undefined }
-          : { measure, amount: num, minutes: undefined, unit: undefined, ...results };
+          ? { measure, minutes: +base.toFixed(2), amount: undefined, wins: undefined, losses: undefined }
+          : { measure, amount: num, minutes: undefined, ...results };
       const desc = note.trim() || undefined;
       if (old) {
         Object.assign(old, fields, { activityId: activity.id, note: desc });
@@ -225,9 +221,8 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     let actId = activityId ?? '';
     mutate((d) => {
       const activity =
-        creating && newName.trim() ? findOrCreateActivity(d, section.id, newName, 'time', unit) : d.activities.find((a) => a.id === activityId)!;
+        creating && newName.trim() ? findOrCreateActivity(d, section.id, newName, 'time') : d.activities.find((a) => a.id === activityId)!;
       activity.defaultMeasure = 'time';
-      activity.defaultUnit = unit;
       actId = activity.id;
     });
     const fresh = useStore.getState().data;
@@ -242,7 +237,6 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       dayId: day.id,
       date: day.date,
       durationMs: mode === 'up' ? 0 : Math.round(base * 60_000),
-      unit: mode === 'up' ? 'min' : unit,
       note: note.trim() || undefined,
       mode,
     });
@@ -251,10 +245,12 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     setActivityId(act.id);
     setValue('');
     setNote('');
+    const { timerHotkey, timerFinishHotkey } = useStore.getState().data.settings;
+    const keys = [timerHotkey && `${shortcutLabel(timerHotkey)} pauses`, timerFinishHotkey && `${shortcutLabel(timerFinishHotkey)} stops`].filter(Boolean).join(', ');
     toast(
       mode === 'up'
-        ? { kind: 'info', title: `Stopwatch started: ${act.name}`, body: 'Stop it when you’re done (top bar, the ✓ on the in-game overlay, or Ctrl + Alt + O) and the time is added to the day.' }
-        : { kind: 'info', title: `Timer started: ${fmtMinutes(base)} ${act.name}`, body: 'It’s added to the day when it ends. Pause it from the top bar or the in-game overlay.' },
+        ? { kind: 'info', title: `Stopwatch started: ${act.name}`, body: `Stop it when you’re done (■ in the top bar or on this day${keys ? `; in game: ${keys}` : ''}) and the time is added to the day.` }
+        : { kind: 'info', title: `Timer started: ${fmtMinutes(base)} ${act.name}`, body: `It’s added to the day when it ends.${keys ? ` In game: ${keys}.` : ''}` },
     );
   };
 
@@ -394,18 +390,9 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
           ]}
         />
         {measure === 'time' ? (
-          <div className="row" style={{ alignItems: 'stretch' }}>
-            <div style={{ flex: 1 }}>
-              <NumberInput value={value} onChange={setValue} placeholder="0" big onEnter={submit} />
-            </div>
-            <Segmented
-              value={unit}
-              onChange={setUnit}
-              options={[
-                { value: 'min', label: 'Minutes' },
-                { value: 'hr', label: 'Hours' },
-              ]}
-            />
+          <div className="input-suffix">
+            <NumberInput value={value} onChange={setValue} placeholder="0" big onEnter={submit} />
+            <span className="suffix">minutes</span>
           </div>
         ) : (
           <div className="row" style={{ alignItems: 'flex-start' }}>

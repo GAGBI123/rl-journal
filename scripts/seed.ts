@@ -28,8 +28,8 @@ for (const season of [old, cur]) {
   for (const day of season.days) {
     if (day.date > today) continue;
     if (rnd() < 0.18) continue; // rest day
-    day.entries.push(newEntry({ activityId: 'act-freeplay', measure: 'time', minutes: Math.round(15 + rnd() * 60), unit: 'min' }));
-    if (rnd() < 0.4) day.entries.push(newEntry({ activityId: aerial.id, measure: 'time', minutes: Math.round(10 + rnd() * 35), unit: 'min' }));
+    day.entries.push(newEntry({ activityId: 'act-freeplay', measure: 'time', minutes: Math.round(15 + rnd() * 60) }));
+    if (rnd() < 0.4) day.entries.push(newEntry({ activityId: aerial.id, measure: 'time', minutes: Math.round(10 + rnd() * 35) }));
     if (rnd() < 0.2) day.entries.push(newEntry({ activityId: recovery.id, measure: 'amount', amount: Math.round(20 + rnd() * 40) }));
     for (const mode of ['act-1s', 'act-2s', 'act-3s', 'act-casual-2s']) {
       if (rnd() < 0.45) {

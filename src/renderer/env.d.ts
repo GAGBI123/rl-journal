@@ -1,4 +1,4 @@
-import type { LiveMatchResult, LiveStatus, LocalPlayer, MainSettings, StatsApiSetupResult, UpdateStatus } from '../shared/model';
+import type { LiveMatchResult, LiveStatus, LocalPlayer, MainSettings, RlSeasonInfo, StatsApiSetupResult, UpdateStatus } from '../shared/model';
 import type { TimerAction, TimerCompletion, TimerStart, TimerState } from '../shared/timer';
 
 export interface StatsApiStatus {
@@ -45,6 +45,11 @@ declare global {
       onTimerState(cb: (t: TimerState | null) => void): () => void;
       onTimerComplete(cb: (c: TimerCompletion) => void): () => void;
       onOverlayHint(cb: (hint: string) => void): () => void;
+      overlayPress(action: TimerAction): Promise<TimerState | null>;
+      hotkeyCheck(accel: string): Promise<'ok' | 'taken' | 'invalid'>;
+      hotkeySuspend(on: boolean): Promise<void>;
+      fetchSeasons(): Promise<RlSeasonInfo[] | null>;
+      onOverlayFlash(cb: (action: TimerAction) => void): () => void;
     };
   }
 }

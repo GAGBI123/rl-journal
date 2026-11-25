@@ -80,6 +80,11 @@ export class OverlayManager {
     }
   }
 
+  /** Show on the overlay that a press (shortcut or click) was received. */
+  flash(action: string) {
+    if (this.win && !this.win.isDestroyed()) this.win.webContents.send('overlay:flash', action);
+  }
+
   private async checkGame() {
     const running = await rocketLeagueRunning();
     if (running !== this.rlRunning) {

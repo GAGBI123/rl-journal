@@ -129,7 +129,7 @@ export function applyLiveMatch(data: AppData, result: LiveMatchResult): SyncOutc
     });
     return { logged: false, notification: n };
   }
-  const activity = findOrCreateActivity(data, gamesSection(data).id, info.mode, 'amount', 'min', info.key);
+  const activity = findOrCreateActivity(data, gamesSection(data).id, info.mode, 'amount', info.key);
   const { entry } = addToDay(target.day, {
     activityId: activity.id,
     measure: 'amount',

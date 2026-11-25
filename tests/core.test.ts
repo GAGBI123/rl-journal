@@ -32,7 +32,6 @@ function log(data: ReturnType<typeof createDefaultData>, seasonId: string, date:
       activityId,
       measure: v.minutes !== undefined ? 'time' : 'amount',
       minutes: v.minutes,
-      unit: v.minutes !== undefined ? 'min' : undefined,
       amount: v.amount,
       wins: v.wins,
     }),

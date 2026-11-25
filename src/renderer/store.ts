@@ -9,6 +9,7 @@ export type View =
   | { name: 'season'; seasonId: string }
   | { name: 'day'; seasonId: string; dayId: string }
   | { name: 'stats'; seasonId?: string }
+  | { name: 'routines' }
   | { name: 'accounts' }
   | { name: 'settings' };
 

@@ -15,7 +15,7 @@ function setup() {
 describe('season days', () => {
   it('clears a day but keeps it in the season', () => {
     const { data, season, day } = setup();
-    addToDay(day(TODAY), { activityId: 'act-freeplay', measure: 'time', minutes: 30, unit: 'min' });
+    addToDay(day(TODAY), { activityId: 'act-freeplay', measure: 'time', minutes: 30 });
     day(TODAY).note = 'good session';
     day(TODAY).hideRecord = true;
     data.matches.push({ id: 'm', at: '', date: TODAY, seasonId: season.id, dayId: day(TODAY).id, entryId: 'x', activityId: 'act-3s', mode: '', result: 'win', source: 'game' });
@@ -41,7 +41,7 @@ describe('season days', () => {
 
   it('closing removes the remaining days after today but keeps logged ones', () => {
     const { data, season, day } = setup();
-    addToDay(day('2026-12-01'), { activityId: 'act-freeplay', measure: 'time', minutes: 5, unit: 'min' }); // planned ahead
+    addToDay(day('2026-12-01'), { activityId: 'act-freeplay', measure: 'time', minutes: 5 }); // planned ahead
     const removed = closeSeason(data, season.id, TODAY);
     expect(season.status).toBe('closed');
     expect(season.days[season.days.length - 1].date).toBe('2026-12-01');
@@ -60,7 +60,6 @@ describe('stopwatch', () => {
     dayId: 'd',
     date: TODAY,
     durationMs: 0,
-    unit: 'min',
     mode: 'up',
     startedAt: 1_000_000,
     accumulatedMs: 0,

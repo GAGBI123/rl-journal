@@ -2,7 +2,18 @@
 import type { AppNotification, LocalPlayer, MainSettings } from '../shared/model';
 import type { TimerCompletion } from '../shared/timer';
 import { applyLiveMatch } from './lib/sync';
-import { activityById, addToDay, dayNumber, ensureSyncDay, findSeason, seasonLabel } from './lib/journal';
+import {
+  activityById,
+  addToDay,
+  completeRoutineItem,
+  dayNumber,
+  ensureSyncDay,
+  findDayRoutine,
+  findSeason,
+  nextRoutineItem,
+  seasonLabel,
+} from './lib/journal';
+import { startRoutineItemTimer, type RoutineItemRef } from './lib/routineTimer';
 import { fmtMinutes } from './lib/format';
 import { playChime } from './lib/sound';
 import { flushSave, useStore } from './store';
@@ -84,6 +95,9 @@ export function logTimer(c: TimerCompletion) {
   const { mutate, toast, data } = useStore.getState();
   let where = '';
   let target: { seasonId: string; dayId: string } | null = null;
+  let next: RoutineItemRef | null = null;
+  let nextLabel = '';
+  let routineDone = '';
   mutate((d) => {
     const t = c.timer;
     let season = findSeason(d, t.seasonId);
@@ -95,7 +109,20 @@ export function logTimer(c: TimerCompletion) {
       day = hit?.day;
     }
     if (!season || !day || !activityById(d, t.activityId)) return;
-    addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, unit: c.unit, note: t.note });
+    // A routine item: tick it off (that also logs the time) and line up the next one.
+    const dr = t.routine ? findDayRoutine(day, t.routine.dayRoutineId) : undefined;
+    const item = dr?.items.find((i) => i.id === t.routine!.itemId);
+    if (dr && item && !item.done) {
+      completeRoutineItem(day, dr.id, item.id, c.minutes, t.note);
+      const n = nextRoutineItem(dr);
+      if (!n) routineDone = dr.name;
+      else if (dr.autoNext) {
+        next = { seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId: n.id };
+        nextLabel = `${activityById(d, n.activityId)?.name ?? 'next item'} (${fmtMinutes(n.minutes)})`;
+      }
+    } else {
+      addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, note: t.note });
+    }
     where = `${seasonLabel(season)}, Day ${dayNumber(season, day)}`;
     target = { seasonId: season.id, dayId: day.id };
   });
@@ -106,9 +133,16 @@ export function logTimer(c: TimerCompletion) {
     toast({ kind: 'error', title: 'Timer finished but not logged', body: 'Its day or activity no longer exists, and no active season covers that date.' });
     return;
   }
-  toast({ kind: 'success', title, body: `Added to ${where}.`, view: { name: 'day', seasonId: tgt.seasonId, dayId: tgt.dayId } });
+  const body = routineDone
+    ? `Routine “${routineDone}” complete. Added to ${where}.`
+    : next
+      ? `Next up: ${nextLabel}, started.`
+      : `Added to ${where}.`;
+  toast({ kind: 'success', title, body, view: { name: 'day', seasonId: tgt.seasonId, dayId: tgt.dayId } });
   if (data.settings.timerSound) playChime();
-  if (data.settings.systemNotifications) window.rlj.notify({ title, body: `Added to ${where}.` });
+  if (data.settings.systemNotifications) window.rlj.notify({ title, body });
+  const nextRef = next as RoutineItemRef | null;
+  if (nextRef) void startRoutineItemTimer(nextRef, false);
 }
 
 function startTimers() {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, shell, Tray } from 'electron';
 import { promises as fs, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { getDataFolder, loadData, saveData } from './storage';
@@ -9,10 +9,11 @@ import { integrateAppImage, setLinuxAutostart } from './linux';
 import { log } from './log';
 import { scheduleRelaunchAfterWindowsUpdate } from './relaunch';
 import type { LiveMatchResult, MainSettings } from '../shared/model';
-import type { TimerCompletion } from '../shared/timer';
+import type { TimerAction, TimerCompletion, TimerSource } from '../shared/timer';
 import { TimerService } from './timer';
 import { OverlayManager } from './overlay';
 import { playlistInfo } from '../shared/playlists';
+import { validSeasons } from '../shared/rlSeasons';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const isWin = process.platform === 'win32';
@@ -30,6 +31,8 @@ let lastQuiet: boolean | null = null;
 if (process.env.RLJ_USER_DATA) app.setPath('userData', process.env.RLJ_USER_DATA);
 
 if (isWin) app.setAppUserModelId('com.rljournal.app');
+// Wayland (e.g. KDE on CachyOS): global shortcuts go through the desktop's shortcut portal.
+if (process.platform === 'linux') app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
 
 log('start', app.getVersion(), process.platform, process.argv.slice(1).join(' '));
 if (!app.requestSingleInstanceLock()) {
@@ -77,6 +80,8 @@ let timerHotkey = 'Control+Alt+P';
 let finishHotkey = 'Control+Alt+O';
 let registeredHotkey = '';
 let registeredFinish = '';
+/** True while the user records a new shortcut in Settings (so the old one doesn't swallow the keys). */
+let hotkeysSuspended = false;
 function registerKey(want: string, current: string, action: () => void): string {
   if (want === current) return current;
   if (current) globalShortcut.unregister(current);
@@ -90,10 +95,34 @@ function registerKey(want: string, current: string, action: () => void): string 
   return '';
 }
 function syncHotkey() {
-  const active = !!timer.get();
-  registeredHotkey = registerKey(active ? timerHotkey : '', registeredHotkey, () => timer.control('toggle'));
+  const active = !!timer.get() && !hotkeysSuspended;
+  registeredHotkey = registerKey(active ? timerHotkey : '', registeredHotkey, () => timerCommand('toggle', 'hotkey'));
   const fin = active && finishHotkey !== timerHotkey ? finishHotkey : '';
-  registeredFinish = registerKey(fin, registeredFinish, () => timer.control('finish'));
+  registeredFinish = registerKey(fin, registeredFinish, () => timerCommand('finish', 'hotkey'));
+}
+
+/** Can this shortcut be used? Tries it for a moment (another app may already own it). */
+function checkHotkey(accel: string): 'ok' | 'taken' | 'invalid' {
+  if (!accel) return 'ok';
+  if (accel === registeredHotkey || accel === registeredFinish) return 'ok';
+  try {
+    if (!globalShortcut.register(accel, () => undefined)) return 'taken';
+    globalShortcut.unregister(accel);
+    return 'ok';
+  } catch {
+    return 'invalid';
+  }
+}
+
+// A press can arrive twice (mouse down and click, or a click that also reached the window): ignore repeats.
+const lastCommand = new Map<TimerAction, number>();
+function timerCommand(action: TimerAction, source: TimerSource) {
+  const now = Date.now();
+  if ((action === 'toggle' || action === 'finish') && now - (lastCommand.get(action) ?? 0) < 400) return timer.get();
+  lastCommand.set(action, now);
+  const result = timer.control(action, source);
+  if (source !== 'app') overlay.flash(action);
+  return result;
 }
 const keyLabel = (k: string) => k.replace('Control', 'Ctrl').split('+').join(' + ');
 
@@ -329,7 +358,30 @@ function registerIpc() {
 
   ipcMain.handle('timer:get', () => timer.get());
   ipcMain.handle('timer:start', (_e, t) => timer.start(t));
-  ipcMain.handle('timer:control', (_e, action) => timer.control(action));
+  ipcMain.handle('timer:control', (_e, action: TimerAction) => timerCommand(action, 'app'));
+  ipcMain.handle('overlay:press', (_e, action: TimerAction) => timerCommand(action, 'overlay'));
+  ipcMain.handle('hotkey:check', (_e, accel: string) => checkHotkey(typeof accel === 'string' ? accel : ''));
+  ipcMain.handle('hotkey:suspend', (_e, on: boolean) => {
+    hotkeysSuspended = !!on;
+    syncHotkey();
+  });
+
+  // Newer Rocket League season dates from the project's GitHub (only when update checks are on).
+  ipcMain.handle('seasons:fetch', async () => {
+    try {
+      const res = await net.fetch('https://raw.githubusercontent.com/GAGBI123/rl-journal/main/seasons.json', {
+        signal: AbortSignal.timeout(8000),
+        cache: 'no-cache',
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const list = validSeasons(json?.seasons);
+      return list.length ? list : null;
+    } catch (err) {
+      log('season dates download failed', String(err));
+      return null;
+    }
+  });
 
   ipcMain.handle('shell:open-external', (_e, url: string) => {
     if (/^https:\/\/(www\.)?(rocketleague\.com|github\.com)\//.test(url)) shell.openExternal(url);

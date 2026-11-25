@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, BarChart3, Bell, CheckCircle2, House, Info, Link2, Settings, TriangleAlert, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, Bell, CheckCircle2, House, Info, Link2, ListChecks, Settings, TriangleAlert, X } from 'lucide-react';
 import { useStore, type View } from './store';
 import { ConfirmHost } from './components/ui';
 import { TimerPill } from './components/TimerPill';
@@ -9,6 +9,7 @@ import { DayPage } from './pages/DayPage';
 import { StatsPage } from './pages/StatsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { RoutinesPage } from './pages/RoutinesPage';
 import { dayForDate, dayNumber, findSeason, seasonLabel } from './lib/journal';
 import { relativeTime, todayISO } from './lib/dates';
 import { playlistInfo } from '../shared/playlists';
@@ -21,6 +22,7 @@ function Sidebar() {
   const today = dayForDate(data, todayISO());
   const items: { icon: typeof House; label: string; view: View; match: View['name'][] }[] = [
     { icon: House, label: 'Seasons', view: { name: 'home' }, match: ['home', 'season', 'day'] },
+    { icon: ListChecks, label: 'Routines', view: { name: 'routines' }, match: ['routines'] },
     { icon: BarChart3, label: 'Statistics', view: { name: 'stats' }, match: ['stats'] },
     { icon: Link2, label: 'Accounts & Sync', view: { name: 'accounts' }, match: ['accounts'] },
     { icon: Settings, label: 'Settings', view: { name: 'settings' }, match: ['settings'] },
@@ -214,6 +216,7 @@ function TopBar() {
         if (d) out.push(`Day ${dayNumber(s, d)}`);
       }
     }
+    if (view.name === 'routines') out.push('Routines');
     if (view.name === 'stats') out.push('Statistics');
     if (view.name === 'accounts') out.push('Accounts & Sync');
     if (view.name === 'settings') out.push('Settings');
@@ -317,6 +320,8 @@ function CurrentPage() {
       return <DayPage key={view.dayId} seasonId={view.seasonId} dayId={view.dayId} />;
     case 'stats':
       return <StatsPage initialSeasonId={view.seasonId} />;
+    case 'routines':
+      return <RoutinesPage />;
     case 'accounts':
       return <AccountsPage />;
     case 'settings':

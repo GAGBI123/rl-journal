@@ -35,22 +35,24 @@ function render() {
   btn.title = running ? 'Pause' : 'Resume';
 }
 
-// React on press, not click: while the game has focus it can swallow the mouse release.
-let lastPress = 0;
-$('toggle').addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  const now = Date.now();
-  if (now - lastPress < 400) return;
-  lastPress = now;
-  void window.rlj.timerControl('toggle');
-});
+// React on press, not click: while the game has focus it can swallow the mouse release. Every event
+// that can carry the press is handled; the main process ignores the repeats (one press = one action).
+function bind(id: string, action: 'toggle' | 'finish') {
+  const press = (e: Event) => {
+    e.preventDefault();
+    void window.rlj.overlayPress(action);
+  };
+  for (const ev of ['pointerdown', 'mousedown', 'click'] as const) $(id).addEventListener(ev, press);
+}
+bind('toggle', 'toggle');
+bind('done', 'finish');
 
-$('done').addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  const now = Date.now();
-  if (now - lastPress < 400) return;
-  lastPress = now;
-  void window.rlj.timerControl('finish');
+// Flash the button when a press arrives (also from the shortcut), so it's clear it was received.
+window.rlj.onOverlayFlash((action) => {
+  const el = $(action === 'finish' ? 'done' : 'toggle');
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
 });
 
 window.rlj.onOverlayHint((hint) => {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, ListChecks, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
 import { useStore } from '../store';
 import { activityById, dayNumber, findSeason, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
 import { formatLongDate, todayISO } from '../lib/dates';
@@ -7,6 +7,8 @@ import { fmtMinutes, fmtNum } from '../lib/format';
 import { daySummary } from '../lib/stats';
 import { EntryForm } from '../components/EntryForm';
 import { confirmDialog, EmptyState, Modal } from '../components/ui';
+import { DayRoutines, StartRoutineModal } from '../components/DayRoutines';
+import { RunningTimerCard } from '../components/TimerPill';
 import type { Entry } from '../../shared/model';
 
 export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }) {
@@ -17,6 +19,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   const day = season?.days.find((d) => d.id === dayId);
   const [editing, setEditing] = useState<Entry | null>(null);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
+  const [pickRoutine, setPickRoutine] = useState(false);
 
   const groups = useMemo(() => {
     if (!day) return [];
@@ -97,6 +100,9 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
           </div>
         </div>
         <div className="actions">
+          <button className="btn" onClick={() => setPickRoutine(true)} title="Start one of your training routines on this day">
+            <ListChecks size={16} /> Start routine
+          </button>
           {(hasRecord || !showRecord) && (
             <button
               className={`btn ${showRecord ? '' : 'on-toggle'}`}
@@ -165,6 +171,8 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
         </div>
 
         <div>
+          <RunningTimerCard />
+          <DayRoutines season={season} day={day} />
           {groups.length === 0 ? (
             <EmptyState icon={<NotebookPen size={30} />} title="Nothing logged yet" body="Pick a section and add what you did today." />
           ) : (
@@ -193,7 +201,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                         <div className="e-meta">
                           {e.measure === 'time' ? (
                             <span className="row" style={{ gap: 4, display: 'inline-flex' }}>
-                              <Clock size={11} /> {e.unit === 'hr' ? `${+((e.minutes ?? 0) / 60).toFixed(2)} h` : `${e.minutes} min`}
+                              <Clock size={11} /> {`${+(e.minutes ?? 0).toFixed(2)} min`}
                             </span>
                           ) : (
                             <span>{section.kind === 'games' ? 'Games' : 'Amount'}</span>
@@ -289,6 +297,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
         </div>
       </div>
 
+      {pickRoutine && <StartRoutineModal season={season} day={day} onClose={() => setPickRoutine(false)} />}
       {editing && (
         <Modal title="Edit entry" onClose={() => setEditing(null)}>
           <EntryForm season={season} day={day} editing={editing} onDone={() => setEditing(null)} />

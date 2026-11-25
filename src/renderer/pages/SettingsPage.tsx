@@ -5,9 +5,11 @@ import { confirmDialog, Field, Modal, Segmented, Toggle } from '../components/ui
 import {
   activityToSection,
   childSections,
+  DEFAULT_SETTINGS,
   createSection,
   deleteSectionTree,
   descendantSectionIds,
+  dropActivitiesFromRoutines,
   moveActivity,
   moveSection,
   nextActivityOrder,
@@ -18,25 +20,9 @@ import {
   sortedSections,
 } from '../lib/journal';
 import { relativeTime } from '../lib/dates';
+import { ShortcutInput } from '../components/ShortcutInput';
 import { uid } from '../lib/format';
 import type { Measure, Section } from '../../shared/model';
-
-const HOTKEYS = [
-  { value: 'Control+Alt+P', label: 'Ctrl + Alt + P' },
-  { value: 'Control+Shift+P', label: 'Ctrl + Shift + P' },
-  { value: 'Alt+P', label: 'Alt + P' },
-  { value: 'F8', label: 'F8' },
-  { value: 'F9', label: 'F9' },
-  { value: '', label: 'Off' },
-];
-
-const FINISH_HOTKEYS = [
-  { value: 'Control+Alt+O', label: 'Ctrl + Alt + O' },
-  { value: 'Control+Shift+O', label: 'Ctrl + Shift + O' },
-  { value: 'Alt+O', label: 'Alt + O' },
-  { value: 'F10', label: 'F10' },
-  { value: '', label: 'Off' },
-];
 
 function countEntries(data: ReturnType<typeof useStore.getState>['data'], pred: (activityId: string) => boolean) {
   let n = 0;
@@ -174,6 +160,7 @@ function SectionsManager() {
       d.activities = d.activities.filter((a) => a.id !== id);
       for (const s of d.seasons) for (const day of s.days) day.entries = day.entries.filter((e) => e.activityId !== id);
       d.matches = d.matches.filter((m) => m.activityId !== id);
+      dropActivitiesFromRoutines(d, new Set([id]));
     });
   };
 
@@ -222,7 +209,6 @@ function SectionsManager() {
         sectionId,
         name,
         defaultMeasure: kind === 'games' ? 'amount' : 'time',
-        defaultUnit: 'min',
         order: nextActivityOrder(d, sectionId),
         createdAt: new Date().toISOString(),
       });
@@ -631,29 +617,28 @@ export function SettingsPage() {
           <div style={{ paddingRight: 16 }}>
             <div style={{ fontWeight: 500 }}>Pause / resume shortcut</div>
             <div className="muted small">
-              Works while you're in game, where the game keeps the mouse to itself. It's only active while a timer runs.
+              The way to pause in game: the game keeps the mouse to itself, so clicks often don't reach the overlay. Only active while a timer runs.
+              Click the button and press any key or combination.
             </div>
           </div>
-          <select className="input" style={{ width: 170 }} value={settings.timerHotkey} onChange={(e) => set('timerHotkey', e.target.value)}>
-            {HOTKEYS.map((h) => (
-              <option key={h.value} value={h.value}>
-                {h.label}
-              </option>
-            ))}
-          </select>
+          <ShortcutInput
+            value={settings.timerHotkey}
+            defaultValue={DEFAULT_SETTINGS.timerHotkey}
+            onChange={(v) => set('timerHotkey', v)}
+            other={{ value: settings.timerFinishHotkey, name: 'done' }}
+          />
         </div>
         <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start' }}>
           <div style={{ paddingRight: 16 }}>
             <div style={{ fontWeight: 500 }}>Done shortcut</div>
             <div className="muted small">Stops the stopwatch (or ends a timer early) and logs the time so far. Also works in game.</div>
           </div>
-          <select className="input" style={{ width: 170 }} value={settings.timerFinishHotkey} onChange={(e) => set('timerFinishHotkey', e.target.value)}>
-            {FINISH_HOTKEYS.map((h) => (
-              <option key={h.value} value={h.value}>
-                {h.label}
-              </option>
-            ))}
-          </select>
+          <ShortcutInput
+            value={settings.timerFinishHotkey}
+            defaultValue={DEFAULT_SETTINGS.timerFinishHotkey}
+            onChange={(v) => set('timerFinishHotkey', v)}
+            other={{ value: settings.timerHotkey, name: 'pause' }}
+          />
         </div>
         <Toggle title="Play a sound when a timer ends" on={settings.timerSound} onChange={(v) => set('timerSound', v)} />
       </div>

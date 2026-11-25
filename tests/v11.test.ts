@@ -117,13 +117,13 @@ describe('game modes, ranked vs casual and honor duels', () => {
 });
 
 describe('one entry per activity per day', () => {
-  it('sums amounts and results, and combines minutes and hours into minutes', () => {
+  it('sums amounts, minutes and results', () => {
     const day: Day = { id: 'd', date: TODAY, entries: [] };
-    addToDay(day, { activityId: 'act-freeplay', measure: 'time', minutes: 30, unit: 'min', note: 'aerials' });
-    const r = addToDay(day, { activityId: 'act-freeplay', measure: 'time', minutes: 90, unit: 'hr', note: 'flicks' });
+    addToDay(day, { activityId: 'act-freeplay', measure: 'time', minutes: 30, note: 'aerials' });
+    const r = addToDay(day, { activityId: 'act-freeplay', measure: 'time', minutes: 90, note: 'flicks' });
     expect(r.merged).toBe(true);
     expect(day.entries).toHaveLength(1);
-    expect(day.entries[0]).toMatchObject({ minutes: 120, unit: 'min', note: 'aerials\nflicks' });
+    expect(day.entries[0]).toMatchObject({ minutes: 120, note: 'aerials\nflicks' });
     addToDay(day, { activityId: 'act-2s', measure: 'amount', amount: 5, wins: 3, losses: 2 });
     addToDay(day, { activityId: 'act-2s', measure: 'amount', amount: 2 });
     expect(day.entries[1]).toMatchObject({ amount: 7, wins: 3, losses: 2 });
@@ -131,12 +131,6 @@ describe('one entry per activity per day', () => {
     expect(day.entries).toHaveLength(3); // a different measure stays separate
   });
 
-  it('keeps hours when both parts are in hours', () => {
-    const day: Day = { id: 'd', date: TODAY, entries: [] };
-    addToDay(day, { activityId: 'act-freeplay', measure: 'time', minutes: 60, unit: 'hr' });
-    addToDay(day, { activityId: 'act-freeplay', measure: 'time', minutes: 30, unit: 'hr' });
-    expect(day.entries[0]).toMatchObject({ minutes: 90, unit: 'hr' });
-  });
 });
 
 describe('activity order', () => {
@@ -253,7 +247,7 @@ describe('save file migration from 1.0', () => {
 
   it('renames 1s/2s/3s to ranked, adds casual + Honor Duel, keeps custom activities last', () => {
     const d = normalizeData(v1());
-    expect(d.version).toBe(2);
+    expect(d.version).toBe(3);
     expect(sectionActivities(d, 'sec-games').map((a) => a.name)).toEqual([
       'Ranked 1s',
       'Ranked 2s',
@@ -278,7 +272,8 @@ describe('save file migration from 1.0', () => {
     expect(threes[0]).toMatchObject({ amount: 2, wins: 0, losses: 1 });
     expect(d.matches.filter((m) => m.activityId === 'act-3s').every((m) => m.entryId === threes[0].id)).toBe(true);
     expect(day.entries.find((e) => e.activityId === 'act-2s')).toMatchObject({ amount: 4, wins: 3, losses: 1 });
-    expect(day.entries.find((e) => e.activityId === 'act-freeplay')).toMatchObject({ minutes: 90, unit: 'min' });
+    expect(day.entries.find((e) => e.activityId === 'act-freeplay')).toMatchObject({ minutes: 90 });
+    expect(day.entries.find((e) => e.activityId === 'act-freeplay')).not.toHaveProperty('unit');
     expect(day.entries.find((e) => e.activityId === 'x-53')).toMatchObject({ amount: 2, wins: 1, losses: 1 });
   });
 

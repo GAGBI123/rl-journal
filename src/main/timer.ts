@@ -12,6 +12,7 @@ import {
   resumeTimer,
   type TimerAction,
   type TimerCompletion,
+  type TimerSource,
   type TimerStart,
   type TimerState,
 } from '../shared/timer';
@@ -63,10 +64,14 @@ export class TimerService {
     return this.timer;
   }
 
-  control(action: TimerAction) {
+  control(action: TimerAction, source: TimerSource = 'app') {
     const t = this.timer;
-    if (!t) return null;
+    if (!t) {
+      log('timer command without a timer', { action, source });
+      return null;
+    }
     const now = Date.now();
+    if (action !== 'cancel') log('timer', action, { source, running: isRunning(t) });
     switch (action) {
       case 'pause':
         this.timer = pauseTimer(t, now);
@@ -82,11 +87,11 @@ export class TimerService {
         const minutes = earlyMinutes(t, now);
         this.timer = null;
         this.changed();
-        if (minutes > 0) this.events.onComplete({ timer: t, minutes, unit: 'min', early: true });
+        if (minutes > 0) this.events.onComplete({ timer: t, minutes, early: true });
         return null;
       }
       case 'cancel':
-        log('timer cancelled');
+        log('timer cancelled', { source });
         this.timer = null;
         break;
     }
@@ -129,6 +134,6 @@ export class TimerService {
     this.events.onState(null);
     void this.persist();
     const minutes = Math.round((t.durationMs / 60000) * 100) / 100;
-    this.events.onComplete({ timer: t, minutes, unit: t.unit, early: false });
+    this.events.onComplete({ timer: t, minutes, early: false });
   }
 }

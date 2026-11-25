@@ -43,12 +43,12 @@ Your journal is never replaced, not by updates and not by running the installer 
 ## Features
 
 ### Seasons and days
-- Add a season with its number. It gets **90 days** by default.
+- Add a season and its dates are filled in from the **Rocket League season calendar**: the current season first, and if you already have it, the seasons before it (start date and length). Custom dates work too. A season that's already over is added as completed.
 - Add days with the **+** after the last day. Only the last day can be removed, and clearing a day empties it without removing it.
 - Close a season when it's over: the remaining days are removed and it's marked as completed on the home screen.
 
 ### Daily log
-- Pick a **section** (Training, Games, or your own), then **what you did**, then **time** (minutes or hours) or **amount**.
+- Pick a **section** (Training, Games, or your own), then **what you did**, then **time** (in minutes) or **amount**. Totals show as days, hours and minutes (e.g. *1d 4h 20m*).
 - Put **sections inside sections**. For example, add *Freeplay* inside Training and log *Overall*, *Flicks* or *Air dribbles* inside it. You'll see your total Freeplay time and the time for each part. An activity you've already been logging can be turned into a section, and what you logged moves to *Overall*.
 - Add an optional **description**, like *"aerials, flicks, air dribbles"*.
 - Logging the same thing twice in a day adds to that day's total instead of creating a second entry.
@@ -58,12 +58,17 @@ Your journal is never replaced, not by updates and not by running the installer 
 
 ![Day](docs/screenshots/day.png)
 
+### Training routines
+- Save a **routine**: a list of trainings with a time each, e.g. *Freeplay 10 min, Aerials 15 min, Kickoffs 5 min* (**Routines** in the sidebar).
+- Start it on any day: it shows as a checklist. Tick items off, or press **Start** to run their timers. With **Auto-next** on, the next item's timer starts by itself when one ends, so you can stay in game.
+- Each completed item adds its time to the day like any other entry.
+
 ### Training timer and in-game overlay
 - **Timer:** pick what you're training, enter how long, and click **Timer**. When the time is up it's added to the day by itself, with your description.
 - **Stopwatch:** don't know how long you'll train? Click **Stopwatch**. It counts up from 0, and when you stop it the time you trained is added to the day.
-- Pause, resume, stop (logs the time so far) or cancel from the top bar.
+- Pause, resume, stop (logs the time so far) or cancel from the top bar, or from the timer card on the day page.
 - While Rocket League is running, a small **overlay at the top of the screen** shows the time left and what it's for, with a pause button that doesn't take focus away from the game.
-- Press **Ctrl + Alt + P** to pause or resume and **Ctrl + Alt + O** to stop and log, also while you're in game (the game keeps the mouse to itself, so shortcuts are the surest way). Pick other keys or turn them off in Settings.
+- Press **Ctrl + Alt + P** to pause or resume and **Ctrl + Alt + O** to stop and log, also while you're in game (the game keeps the mouse to itself, so shortcuts are the surest way). Set any key or combination you like in Settings (click and press the keys), or turn them off.
 - The overlay works with Rocket League in **Borderless** or **Windowed** mode. In exclusive Fullscreen, Windows draws the game over every other window, so switch to Borderless (Settings → Video → Display mode) to see it. Drawing inside a fullscreen game would mean hooking into the game process, which anti-cheat doesn't allow. You can turn the overlay off or move it in **Settings → Timer & in-game overlay**.
 
 ### Automatic game logging
@@ -141,6 +146,7 @@ This program will not transfer any information to other networked systems unless
 - **Your journal stays on your computer.** There is no account, no telemetry and no analytics.
 - **Rocket League Stats API:** to log games, the app connects to the game's Stats API on your own computer (`localhost`). This connection never leaves your PC. You can turn it off in **Accounts & Sync**.
 - **Updates:** every few hours the app asks GitHub (github.com) whether a newer version exists, and downloads it from there. Like any download, GitHub sees your IP address ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)). Nothing about you or your journal is sent. You can turn automatic checks off in **Settings → Updates**.
+- **Season dates:** when you add a season (and update checks are on), the app downloads the Rocket League season calendar (`seasons.json`) from this GitHub repository, so it knows about new seasons. Nothing is sent.
 - **Game config:** the app changes Rocket League's `TAStatsAPI.ini` / `DefaultStatsAPI.ini` only when you click **Enable Stats API**, and keeps a backup of the original file.
 
 ## License

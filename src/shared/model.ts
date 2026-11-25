@@ -1,11 +1,10 @@
 // Core data model shared by the main and renderer processes.
 
 export type Measure = 'time' | 'amount';
-export type TimeUnit = 'min' | 'hr';
 export type Platform = 'epic' | 'steam' | 'psn' | 'xbl' | 'switch' | 'other';
 
 /** Current save-file schema. Older files are migrated in normalizeData(). */
-export const DATA_VERSION = 2;
+export const DATA_VERSION = 3;
 
 export interface Section {
   id: string;
@@ -26,7 +25,6 @@ export interface Activity {
   sectionId: string;
   name: string;
   defaultMeasure: Measure;
-  defaultUnit: TimeUnit;
   builtIn?: boolean;
   /**
    * Stable id for game modes the live game connection logs to ("ranked-3s", "honor-duel", …).
@@ -44,8 +42,6 @@ export interface Entry {
   measure: Measure;
   /** Stored in minutes when measure === 'time'. */
   minutes?: number;
-  /** The unit the user typed the time in (display only). */
-  unit?: TimeUnit;
   /** Count when measure === 'amount'. */
   amount?: number;
   /** Wins among the games of this entry whose result is known. */
@@ -67,6 +63,41 @@ export interface Day {
   note?: string;
   /** Hide this day's wins / losses on the day page (the user's choice, per day). */
   hideRecord?: boolean;
+  /** Training routines started on this day (a copy of the routine, ticked off item by item). */
+  routines?: DayRoutine[];
+}
+
+/** One thing to do in a routine: an activity for a number of minutes. */
+export interface RoutineItem {
+  id: string;
+  activityId: string;
+  minutes: number;
+  note?: string;
+}
+
+/** A saved training routine, e.g. "Warm-up": Freeplay 10 min, Aerials 15 min, … */
+export interface Routine {
+  id: string;
+  name: string;
+  items: RoutineItem[];
+  createdAt: string;
+}
+
+export interface DayRoutineItem extends RoutineItem {
+  done?: boolean;
+  /** Minutes added to the day when it was completed (taken off again when it's unticked). */
+  loggedMinutes?: number;
+}
+
+/** A routine started on a day. Items are copied so later edits to the routine don't change past days. */
+export interface DayRoutine {
+  id: string;
+  routineId?: string;
+  name: string;
+  items: DayRoutineItem[];
+  startedAt: string;
+  /** When an item's timer ends, start the next item's timer by itself. */
+  autoNext?: boolean;
 }
 
 export interface Season {
@@ -178,6 +209,15 @@ export interface Settings {
   lastLocalPlayer?: LocalPlayer;
   /** App version that last opened this file (used for the "updated" message). */
   lastRunVersion?: string;
+  /** Rocket League season dates downloaded from the project's GitHub (newer than the ones built in). */
+  rlSeasons?: RlSeasonInfo[];
+}
+
+/** Start (and end, when known) of an official Rocket League competitive season. */
+export interface RlSeasonInfo {
+  number: number;
+  start: string;
+  end?: string;
 }
 
 export type OverlayPosition = 'top-left' | 'top-center' | 'top-right';
@@ -199,6 +239,7 @@ export interface AppData {
   seasons: Season[];
   sections: Section[];
   activities: Activity[];
+  routines: Routine[];
   accounts: Account[];
   matches: MatchRecord[];
   notifications: AppNotification[];
