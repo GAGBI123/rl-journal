@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Gamepad2, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, NotebookPen, Pencil, Radio, Trash2, Trophy, Zap } from 'lucide-react';
 import { useStore } from '../store';
 import { activityById, dayNumber, findSeason, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
 import { formatLongDate, todayISO } from '../lib/dates';
@@ -41,6 +41,16 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   const next = season.days[idx + 1];
   const isToday = day.date === todayISO();
   const sum = daySummary(data, day);
+  // Per-day choice: show or hide this day's wins / losses.
+  const showRecord = !day.hideRecord;
+  const hasRecord = sum.results.length > 0 || sum.honor.known || data.matches.some((m) => m.dayId === day.id && m.result !== 'unknown');
+  const toggleRecord = () =>
+    mutate((d) => {
+      const t = findSeason(d, season.id)?.days.find((x) => x.id === day.id);
+      if (!t) return;
+      if (t.hideRecord) delete t.hideRecord;
+      else t.hideRecord = true;
+    });
   const go = (id: string) => navigate({ name: 'day', seasonId: season.id, dayId: id }, { replace: true });
 
   const remove = async (e: Entry) => {
@@ -87,6 +97,16 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
           </div>
         </div>
         <div className="actions">
+          {(hasRecord || !showRecord) && (
+            <button
+              className={`btn ${showRecord ? '' : 'on-toggle'}`}
+              onClick={toggleRecord}
+              title={showRecord ? "Hide this day's wins and losses" : "Show this day's wins and losses"}
+              aria-pressed={!showRecord}
+            >
+              {showRecord ? <EyeOff size={16} /> : <Eye size={16} />} {showRecord ? 'Hide record' : 'Show record'}
+            </button>
+          )}
           <button className="btn" disabled={!prev} onClick={() => prev && go(prev.id)}>
             <ChevronLeft size={16} /> Previous
           </button>
@@ -104,7 +124,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
         <div className="card kv">
           <div className="k">Games</div>
           <div className="v">{fmtNum(sum.normalGames)}</div>
-          {sum.results.length > 0 && (
+          {showRecord && sum.results.length > 0 && (
             <div className="mode-results">
               {sum.results.map((r) => (
                 <span key={r.activityId} title={`${r.name}: ${r.wins} wins, ${r.losses} losses`}>
@@ -117,7 +137,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
         <div className="card kv">
           <div className="k">Honor duels</div>
           <div className="v">{fmtNum(sum.honorDuels)}</div>
-          {sum.honor.known && (
+          {showRecord && sum.honor.known && (
             <div className="mode-results">
               <span>
                 <span className="up">{sum.honor.wins}W</span> <span className="down">{sum.honor.losses}L</span>
@@ -126,6 +146,14 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
           )}
         </div>
       </div>
+      {!showRecord && hasRecord && (
+        <div className="muted small record-hidden">
+          <EyeOff size={13} /> Wins and losses are hidden for this day.{' '}
+          <button className="crumb-btn" onClick={toggleRecord}>
+            Show
+          </button>
+        </div>
+      )}
 
       <div className="day-layout">
         <div className="card entry-form">
@@ -170,7 +198,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                           ) : (
                             <span>{section.kind === 'games' ? 'Games' : 'Amount'}</span>
                           )}
-                          {(e.wins !== undefined || e.losses !== undefined) && e.measure === 'amount' && (
+                          {showRecord && (e.wins !== undefined || e.losses !== undefined) && e.measure === 'amount' && (
                             <span>
                               {' '}
                               · <span className="up">{e.wins ?? 0}W</span> <span className="down">{e.losses ?? 0}L</span>
@@ -212,8 +240,8 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                 <thead>
                   <tr>
                     <th>Mode</th>
-                    <th>Result</th>
-                    <th>Score</th>
+                    {showRecord && <th>Result</th>}
+                    {showRecord && <th>Score</th>}
                     <th>G / A / S / Sh</th>
                     <th>Time</th>
                   </tr>
@@ -222,6 +250,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                   {matchesToday.map((m) => (
                     <tr key={m.id}>
                       <td>{activityById(data, m.activityId)?.name ?? m.mode}</td>
+                      {showRecord && (
                       <td className={m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}>
                         {m.result === 'win' ? (
                           <span className="row" style={{ gap: 4 }}>
@@ -233,7 +262,8 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                           'Unknown'
                         )}
                       </td>
-                      <td>{m.teamScore !== undefined ? `${m.teamScore} – ${m.opponentScore ?? 0}${m.overtime ? ' OT' : ''}` : '—'}</td>
+                      )}
+                      {showRecord && <td>{m.teamScore !== undefined ? `${m.teamScore} – ${m.opponentScore ?? 0}${m.overtime ? ' OT' : ''}` : '—'}</td>}
                       <td>{m.me ? `${m.me.goals} / ${m.me.assists} / ${m.me.saves} / ${m.me.shots}` : '—'}</td>
                       <td className="muted">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                     </tr>

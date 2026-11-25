@@ -65,6 +65,8 @@ export interface Day {
   date: string;
   entries: Entry[];
   note?: string;
+  /** Hide this day's wins / losses on the day page (the user's choice, per day). */
+  hideRecord?: boolean;
 }
 
 export interface Season {

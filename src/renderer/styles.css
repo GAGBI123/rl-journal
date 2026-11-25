@@ -2131,3 +2131,16 @@ textarea.input.desc {
   height: 100%;
   background: var(--blue);
 }
+
+/* ---- 1.2.2: per-day record toggle ---- */
+.btn.on-toggle {
+  border-color: rgba(57, 135, 229, 0.45);
+  background: rgba(57, 135, 229, 0.12);
+}
+
+.record-hidden {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 14px;
+}

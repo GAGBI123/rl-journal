@@ -51,6 +51,7 @@ Your journal is never replaced, not by updates and not by running the installer 
 - Put **sections inside sections**. For example, add *Freeplay* inside Training and log *Overall*, *Flicks* or *Air dribbles* inside it. You'll see your total Freeplay time and the time for each part. An activity you've already been logging can be turned into a section, and what you logged moves to *Overall*.
 - Add an optional **description**, like *"aerials, flicks, air dribbles"*.
 - Logging the same thing twice in a day adds to that day's total instead of creating a second entry.
+- Don't want to see your wins and losses on a day? **Hide record** on that day hides them (saved per day).
 - While you type, you see how it compares to **yesterday**, **your average**, the **season average** and your **best day**, including when you set a new personal best.
 - Games start with **Ranked 1s / 2s / 3s**, **Casual 1s / 2s / 3s** and **Honor Duel**. Add your own and put them in any order in Settings.
 
