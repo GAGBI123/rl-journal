@@ -51,6 +51,16 @@ jobs:
           timeout 90 xvfb-run -a release/RL-Journal-x86_64.AppImage --no-sandbox 2>&1 | tee smoke.log || true
           grep -q RLJ_SMOKE_OK smoke.log
 
+      - name: Overlay check (Wayland desktop -> XWayland, overlay above other windows)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get install -y -qq x11-utils
+          export RLJ_SMOKE_TEST=1 RLJ_SMOKE_OVERLAY=1 RLJ_USER_DATA="$RUNNER_TEMP/rlj-overlay" XDG_SESSION_TYPE=wayland
+          # A stand-in for the game, so the overlay sees "RocketLeague.exe" running.
+          bash -c 'exec -a RocketLeague.exe sleep 300' &
+          timeout 150 xvfb-run -a bash scripts/ci-overlay-check.sh release/RL-Journal-x86_64.AppImage 2>&1 | tee overlay.log || true
+          grep -q OVERLAY_CHECK_OK overlay.log
+
       - uses: actions/upload-artifact@v4
         with:
           name: rl-journal-${{ matrix.target }}

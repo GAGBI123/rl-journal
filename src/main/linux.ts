@@ -1,5 +1,6 @@
-// Linux desktop integration: app-menu entry for the AppImage and "start when I log in".
+// Linux desktop integration: app-menu entry for the AppImage, "start when I log in" and XWayland.
 import { app } from 'electron';
+import { spawn } from 'node:child_process';
 import { promises as fs, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +13,62 @@ const configHome = () => process.env.XDG_CONFIG_HOME || path.join(os.homedir(), 
 /** The file to launch: the AppImage when running from one, otherwise the executable. */
 function launchTarget() {
   return process.env.APPIMAGE || process.execPath;
+}
+
+/** What to start to run under XWayland, or null when this instance should just carry on. */
+export function xwaylandRelaunchPlan(
+  env: NodeJS.ProcessEnv,
+  argv: string[],
+  hasSwitch: (name: string) => boolean,
+  execPath: string,
+): { file: string; args: string[]; env: NodeJS.ProcessEnv } | null {
+  if (!onWayland(env)) return null;
+  if (!env.DISPLAY) return null; // no XWayland on this desktop
+  if (env.RLJ_WAYLAND === '1' || env.RLJ_XWAYLAND_RELAUNCH === '1') return null;
+  if (hasSwitch('ozone-platform') || hasSwitch('ozone-platform-hint')) return null;
+  const next: NodeJS.ProcessEnv = { ...env, RLJ_XWAYLAND_RELAUNCH: '1' };
+  // The AppImage launcher put this mount's folders in front of these; the new AppImage mounts its own
+  // copy and this one goes away when this instance exits.
+  const appDir = env.APPDIR;
+  if (appDir) {
+    for (const key of ['PATH', 'LD_LIBRARY_PATH', 'XDG_DATA_DIRS', 'GSETTINGS_SCHEMA_DIR']) {
+      const kept = (env[key] ?? '').split(':').filter((p) => p && p !== appDir && !p.startsWith(`${appDir}/`));
+      if (kept.length) next[key] = kept.join(':');
+      else delete next[key];
+    }
+    delete next.APPDIR;
+  }
+  delete next.GDK_BACKEND; // GTK has to follow the X11 window system, not a Wayland setting
+  return { file: env.APPIMAGE || execPath, args: [...argv.slice(1), '--ozone-platform=x11'], env: next };
+}
+
+/** Electron picks native Wayland for itself under these conditions (its default since Electron 38). */
+export function onWayland(env = process.env) {
+  return env.XDG_SESSION_TYPE === 'wayland' || !!env.WAYLAND_DISPLAY || !!env.WAYLAND_SOCKET;
+}
+
+/**
+ * Wayland doesn't let an app keep a window above other windows (Electron: alwaysOnTop "not supported on
+ * Wayland"), so the timer overlay never showed over the game. Rocket League runs through Proton on XWayland
+ * anyway, so on a Wayland desktop RL Journal starts itself again under XWayland (--ozone-platform=x11),
+ * where the overlay (focusable: false = left alone by the window manager) stays on top of the game, in
+ * fullscreen too. Call before taking the single-instance lock; true = a new instance was started, so quit.
+ * RLJ_WAYLAND=1 (or passing --ozone-platform yourself) keeps the native Wayland window.
+ */
+export function relaunchUnderXWayland(): boolean {
+  if (process.platform !== 'linux') return false;
+  const plan = xwaylandRelaunchPlan(process.env, process.argv, (s) => app.commandLine.hasSwitch(s), process.execPath);
+  // Only guards this one hop: apps this instance starts later (e.g. after an update) decide for themselves.
+  delete process.env.RLJ_XWAYLAND_RELAUNCH;
+  if (!plan) return false;
+  try {
+    const child = spawn(plan.file, plan.args, { detached: true, stdio: 'ignore', env: plan.env });
+    child.unref();
+    return true;
+  } catch (err) {
+    console.warn('Starting under XWayland failed', err);
+    return false;
+  }
 }
 
 function quoteExec(p: string) {

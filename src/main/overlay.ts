@@ -5,6 +5,7 @@ import { BrowserWindow, screen } from 'electron';
 import { execFile } from 'node:child_process';
 import type { OverlayPosition } from '../shared/model';
 import type { TimerState } from '../shared/timer';
+import { log } from './log';
 
 const WIDTH = 372;
 const HEIGHT = 92;
@@ -40,6 +41,7 @@ export class OverlayManager {
   private position: OverlayPosition = 'top-center';
   private rlRunning = false;
   private poll: NodeJS.Timeout | null = null;
+  private lastState = '';
 
   constructor(private hooks: OverlayHooks) {}
 
@@ -62,7 +64,15 @@ export class OverlayManager {
       clearInterval(this.poll);
       this.poll = null;
     }
-    const show = wanted && (this.rlRunning || this.hooks.gameConnected()) && !this.hooks.mainWindowFocused();
+    const game = this.rlRunning || this.hooks.gameConnected();
+    const focused = this.hooks.mainWindowFocused();
+    const show = wanted && game && !focused;
+    // One main.log line per change, to see why the overlay did or didn't show.
+    const state = !wanted ? (this.enabled ? 'no timer' : 'turned off') : show ? 'shown' : !game ? 'waiting for Rocket League' : 'RL Journal is focused';
+    if (state !== this.lastState) {
+      if (this.lastState || state !== 'no timer') log('overlay', state);
+      this.lastState = state;
+    }
     if (show) {
       const w = this.ensure();
       w.webContents.send('timer:state', timer);
@@ -91,6 +101,8 @@ export class OverlayManager {
       this.rlRunning = running;
       this.update();
     }
+    // X11: the overlay isn't managed by the window manager, so put it back on top if the game raised itself.
+    if (process.platform === 'linux' && this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.moveTop();
   }
 
   private ensure() {

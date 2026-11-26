@@ -77,6 +77,7 @@ Your journal is never replaced, not by updates and not by running the installer 
 - While Rocket League is running, a small **overlay at the top of the screen** shows the time left and what it's for, with a pause button that doesn't take focus away from the game.
 - Press **Ctrl + Alt + P** to pause or resume and **Ctrl + Alt + O** to stop and log, also while you're in game (the game keeps the mouse to itself, so shortcuts are the surest way). Set any key or combination you like in Settings (click and press the keys), or turn them off.
 - The overlay works with Rocket League in **Borderless** or **Windowed** mode. In exclusive Fullscreen, Windows draws the game over every other window, so switch to Borderless (Settings → Video → Display mode) to see it. Drawing inside a fullscreen game would mean hooking into the game process, which anti-cheat doesn't allow. You can turn the overlay off or move it in **Settings → Timer & in-game overlay**.
+- **Linux:** Wayland doesn't let apps keep a window on top of others, so on a Wayland desktop (KDE, GNOME, …) RL Journal runs through XWayland, like Rocket League under Proton does. There the overlay isn't handled by the window manager and stays above the game, in Borderless and Fullscreen. To keep RL Journal on native Wayland instead (no overlay over the game), start it with `RLJ_WAYLAND=1`.
 
 ### Automatic game logging
 RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.com/developer/stats-api) to log your games for you while the app is running, even when it's minimized to the tray.

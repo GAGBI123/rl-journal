@@ -5,7 +5,7 @@ import { getDataFolder, loadData, saveData } from './storage';
 import { LiveGameClient } from './liveGame';
 import { getStatsApiStatus, setupStatsApi } from './statsApiConfig';
 import { Updater } from './updater';
-import { integrateAppImage, setLinuxAutostart } from './linux';
+import { integrateAppImage, onWayland, relaunchUnderXWayland, setLinuxAutostart } from './linux';
 import { log } from './log';
 import { scheduleRelaunchAfterWindowsUpdate } from './relaunch';
 import type { LiveMatchResult, MainSettings } from '../shared/model';
@@ -32,11 +32,21 @@ let lastQuiet: boolean | null = null;
 if (process.env.RLJ_USER_DATA) app.setPath('userData', process.env.RLJ_USER_DATA);
 
 if (isWin) app.setAppUserModelId('com.rljournal.app');
-// Wayland (e.g. KDE on CachyOS): global shortcuts go through the desktop's shortcut portal.
+// Native Wayland (RLJ_WAYLAND=1): global shortcuts go through the desktop's shortcut portal. Under XWayland
+// (the default on Wayland desktops, see relaunchUnderXWayland) they are X11 key grabs, which get the keys while
+// the game (Proton = XWayland too) has focus.
 if (process.platform === 'linux') app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
 
 log('start', app.getVersion(), process.platform, process.argv.slice(1).join(' '));
-if (!app.requestSingleInstanceLock()) {
+// Linux: the overlay can't stay above the game on native Wayland, so run under XWayland (see linux.ts).
+const xwaylandRelaunch = relaunchUnderXWayland();
+if (process.platform === 'linux') {
+  const ozone = app.commandLine.getSwitchValue('ozone-platform') || (onWayland() ? 'wayland' : 'x11');
+  log('display', { session: process.env.XDG_SESSION_TYPE || '?', ozone, xwayland: !!process.env.DISPLAY, restarting: xwaylandRelaunch || undefined });
+}
+if (xwaylandRelaunch) {
+  app.exit(0);
+} else if (!app.requestSingleInstanceLock()) {
   log('another instance is running; handing over and quitting');
   app.quit();
 }
@@ -347,10 +357,18 @@ function registerIpc() {
     if (smokeTest) {
       // CI check: the window loaded and the app started. Exit cleanly.
       console.log('RLJ_SMOKE_OK');
-      setTimeout(() => {
-        quitting = true;
-        app.exit(0);
-      }, 500);
+      // CI overlay check (scripts/ci-overlay-check.sh): run a timer so the overlay shows, then exit.
+      const overlayCheck = !!process.env.RLJ_SMOKE_OVERLAY;
+      if (overlayCheck) {
+        timer.start({ activityId: 'smoke', label: 'Smoke test', activityName: 'Smoke test', seasonId: '', dayId: '', date: '', durationMs: 120000 });
+      }
+      setTimeout(
+        () => {
+          quitting = true;
+          app.exit(0);
+        },
+        overlayCheck ? 30000 : 500,
+      );
     }
     return live.getStatus();
   });
@@ -467,6 +485,7 @@ app.on('second-instance', (_e, argv) => {
 });
 
 app.whenReady().then(() => {
+  if (xwaylandRelaunch) return; // the XWayland instance takes over
   registerIpc();
   timer.restore();
   syncHotkey();
