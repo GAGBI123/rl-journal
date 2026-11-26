@@ -139,6 +139,8 @@ describe('final scores', () => {
     const { t, results } = tracker();
     t.handle('UpdateState', state({ blue: 0, orange: 0, time: 200, touches: 3 }));
     t.handle('GoalScored', { MatchGuid: G, Scorer: { Name: 'Me', TeamNum: 0 } });
+    t.handle('UpdateState', state({ blue: 1, orange: 0, time: 100, touches: 6 }));
+    t.handle('RoundStarted', { MatchGuid: G });
     t.handle('GoalScored', { MatchGuid: G, Scorer: { Name: 'Me', TeamNum: 0 } });
     t.handle('UpdateState', state({ blue: 1, orange: 0, time: 0, touches: 9 }));
     t.handle('MatchEnded', { MatchGuid: G, WinnerTeamNum: 0 });
@@ -213,7 +215,7 @@ describe('settings in 1.7', () => {
     expect(createDefaultData().settings.ignorePrivateMatches).toBe(false);
     const old = normalizeData({ version: 3, seasons: [], settings: { ignorePrivateMatches: true } });
     expect(old.settings.ignorePrivateMatches).toBe(false);
-    expect(old.settings.settingsRev).toBe(1);
+    expect(old.settings.settingsRev).toBe(2);
     // Turned on again by the user afterwards: stays on.
     const again = normalizeData({ ...old, settings: { ...old.settings, ignorePrivateMatches: true } });
     expect(again.settings.ignorePrivateMatches).toBe(true);

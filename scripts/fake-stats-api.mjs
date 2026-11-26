@@ -53,9 +53,15 @@ function match(guid, playlistId, win) {
     ev('CountdownBegin', guid),
     ev('RoundStarted', guid),
     state(guid, playlistId, 0, 0),
-    ev('GoalScored', guid, { GoalSpeed: 90, Scorer: { Name: me, Shortcut: 1, TeamNum: 0 } }),
+    ev('GoalScored', guid, { GoalSpeed: 90, GoalTime: 40, Scorer: { Name: me, Shortcut: 1, TeamNum: 0 } }),
     state(guid, playlistId, 1, 0),
-    state(guid, playlistId, 1, 0, '', true), // goal replay
+    // The goal replay shows the goal again, and the game sends GoalScored again (must not count twice).
+    ev('GoalReplayStart', guid),
+    state(guid, playlistId, 1, 0, '', true),
+    ev('GoalScored', guid, { GoalSpeed: 90, GoalTime: 40, Scorer: { Name: me, Shortcut: 1, TeamNum: 0 } }),
+    ev('GoalReplayEnd', guid),
+    ev('CountdownBegin', guid),
+    ev('RoundStarted', guid),
     state(guid, playlistId, win ? 3 : 1, win ? 1 : 2),
     state(guid, playlistId, win ? 3 : 1, win ? 1 : 2, win ? 'Blue' : 'Orange'),
     ev('MatchEnded', guid, { WinnerTeamNum: win ? 0 : 1 }),

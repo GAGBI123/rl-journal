@@ -41,11 +41,13 @@ export const DEFAULT_SETTINGS: Settings = {
   dayMatchesOpen: true,
   endDayManually: true,
   theme: 'aurora',
-  settingsRev: 1,
+  settingsRev: 2,
 };
 
 /** Latest one-time settings change (see normalizeData). */
-const SETTINGS_REV = 1;
+const SETTINGS_REV = 2;
+/** When 1.7.0 came out. Its game scores counted goals again when a goal replay showed them. */
+const V170_RELEASED = '2026-11-26T00:20:00.000Z';
 const THEMES = new Set(['aurora', 'classic']);
 const COLOR_KEYS = new Set(['accent', 'accent2', 'background', 'surface', 'text', 'win', 'loss']);
 
@@ -128,6 +130,16 @@ export function normalizeData(raw: any): AppData {
   // 1.7: private matches are logged unless the user turns that off (they were ignored by default before).
   const rev = typeof raw.settings?.settingsRev === 'number' ? raw.settings.settingsRev : 0;
   if (rev < 1) data.settings.ignorePrivateMatches = false;
+  // 1.7.1: scores of games logged by 1.7.0 are too high (replayed goals counted again) and can't be
+  // worked out afterwards, so they're removed. Wins and losses came from the game and stay.
+  if (rev === 1) {
+    for (const m of data.matches) {
+      if (m?.source === 'game' && typeof m.at === 'string' && m.at >= V170_RELEASED) {
+        delete m.teamScore;
+        delete m.opponentScore;
+      }
+    }
+  }
   data.settings.settingsRev = Math.max(rev, SETTINGS_REV);
   if (!THEMES.has(data.settings.theme)) data.settings.theme = DEFAULT_SETTINGS.theme;
   const colors = data.settings.customColors;
