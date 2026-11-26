@@ -15,17 +15,22 @@ function launchTarget() {
   return process.env.APPIMAGE || process.execPath;
 }
 
-/** What to start to run under XWayland, or null when this instance should just carry on. */
+/**
+ * What to start to run under XWayland, or null when this instance should just carry on.
+ * `ozone` = the window system Electron picked (it writes its choice into app.commandLine, so whether the
+ * user asked for one is read from argv).
+ */
 export function xwaylandRelaunchPlan(
   env: NodeJS.ProcessEnv,
   argv: string[],
-  hasSwitch: (name: string) => boolean,
+  ozone: string,
   execPath: string,
 ): { file: string; args: string[]; env: NodeJS.ProcessEnv } | null {
-  if (!onWayland(env)) return null;
+  if (ozone ? ozone !== 'wayland' : !onWayland(env)) return null;
   if (!env.DISPLAY) return null; // no XWayland on this desktop
   if (env.RLJ_WAYLAND === '1' || env.RLJ_XWAYLAND_RELAUNCH === '1') return null;
-  if (hasSwitch('ozone-platform') || hasSwitch('ozone-platform-hint')) return null;
+  const asked = (name: string) => argv.slice(1).some((a) => a === `--${name}` || a.startsWith(`--${name}=`));
+  if (asked('ozone-platform') || asked('ozone-platform-hint')) return null;
   const next: NodeJS.ProcessEnv = { ...env, RLJ_XWAYLAND_RELAUNCH: '1' };
   // The AppImage launcher put this mount's folders in front of these; the new AppImage mounts its own
   // copy and this one goes away when this instance exits.
@@ -57,7 +62,7 @@ export function onWayland(env = process.env) {
  */
 export function relaunchUnderXWayland(): boolean {
   if (process.platform !== 'linux') return false;
-  const plan = xwaylandRelaunchPlan(process.env, process.argv, (s) => app.commandLine.hasSwitch(s), process.execPath);
+  const plan = xwaylandRelaunchPlan(process.env, process.argv, app.commandLine.getSwitchValue('ozone-platform'), process.execPath);
   // Only guards this one hop: apps this instance starts later (e.g. after an update) decide for themselves.
   delete process.env.RLJ_XWAYLAND_RELAUNCH;
   if (!plan) return false;
