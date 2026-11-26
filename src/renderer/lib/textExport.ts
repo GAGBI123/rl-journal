@@ -4,7 +4,7 @@ import type { AppData, Day, Entry, Season } from '../../shared/model';
 import { HONOR_DUEL_KEY } from '../../shared/playlists';
 import { diffDays, formatDate, todayISO } from './dates';
 import { fmtMinutes, fmtNum, fmtPct } from './format';
-import { dayNumber, inRecord, seasonLabel, sectionActivities, sortedSections } from './journal';
+import { dayNumber, entryNotes, inRecord, seasonLabel, sectionActivities, sortedSections } from './journal';
 import { rankedBySize, seasonRecap, winRate, type ModeTotal } from './recap';
 
 const LINE = '-'.repeat(100);
@@ -65,7 +65,8 @@ export function dayText(data: AppData, season: Season, day: Day): string[] {
         r.losses += e.losses ?? 0;
         r.known ||= e.wins !== undefined || e.losses !== undefined;
         ranked.set(size, r);
-        if (e.note?.trim()) lines.push(`${size} notes: ${e.note.trim()}`);
+        const notes = entryNotes(e);
+        if (notes.length) lines.push(`${size} notes: ${notes.join('; ')}`);
         continue;
       }
       const games = section.kind === 'games' && e.measure === 'amount';
@@ -87,7 +88,10 @@ export function dayText(data: AppData, season: Season, day: Day): string[] {
   return out;
 }
 
-const noteText = (e: Entry) => (e.note?.trim() ? ` - ${e.note.trim().replace(/\s*\n\s*/g, '; ')}` : '');
+const noteText = (e: Entry) => {
+  const notes = entryNotes(e).map((n) => n.replace(/\s*\n\s*/g, '; '));
+  return notes.length ? ` - ${notes.join('; ')}` : '';
+};
 
 /** "day 12" for a date inside the season (the text file names days by number, not date). */
 function dayRef(season: Season, iso: string) {

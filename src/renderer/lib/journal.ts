@@ -7,6 +7,7 @@ import {
   type DayRoutine,
   type DayRoutineItem,
   type Entry,
+  type EntrySession,
   type EntrySort,
   type MatchRecord,
   type MatchSort,
@@ -16,6 +17,7 @@ import {
   type RoutineItemKind,
   type Season,
   type Section,
+  type SessionSource,
   type Settings,
 } from '../../shared/model';
 import { DEFAULT_GAME_MODES, HONOR_DUEL_KEY, keyForLegacyName, playlistInfo, PRACTICE_MODE_NAMES, PRIVATE_KEYS } from '../../shared/playlists';
@@ -167,7 +169,10 @@ export function normalizeData(raw: any): AppData {
     s.days = (s.days ?? []).map((d: Day) => ({ ...d, entries: d.entries ?? [] }));
     for (const d of s.days) {
       // 1.4: times are always minutes (the "hours" unit is gone; minutes were always stored).
-      for (const e of d.entries) delete (e as any).unit;
+      for (const e of d.entries) {
+        delete (e as any).unit;
+        normalizeSessions(e);
+      }
       if (d.routines !== undefined) {
         d.routines = Array.isArray(d.routines) ? d.routines.filter((r) => r && Array.isArray(r.items)) : [];
         if (!d.routines.length) delete d.routines;
@@ -218,6 +223,9 @@ export function normalizeData(raw: any): AppData {
   for (const a of data.activities) {
     a.createdAt = a.createdAt ?? new Date().toISOString();
     delete (a as any).defaultUnit;
+  }
+  for (const m of data.matches) {
+    if (m && typeof m === 'object' && (typeof m.note !== 'string' || !m.note.trim())) delete m.note;
   }
   if (fromVersion < 2) migrateToV2(data);
   ensureActivityOrder(data);
@@ -766,7 +774,21 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * Add `add` onto `target` (same activity + measure): times and amounts are summed, results are
  * summed, descriptions are kept.
  */
-export function mergeInto(target: Entry, add: EntryInput | Entry) {
+export function mergeInto(target: Entry, add: EntryInput | Entry, meta?: SessionMeta) {
+  // What's added becomes a session of the entry (games from the live game connection are tracked
+  // matches instead). Its note goes onto that session.
+  const isEntry = 'id' in add && 'createdAt' in add;
+  let parts: EntrySession[] = [];
+  let noteOnSession = false;
+  if (add.sessions) parts = add.sessions.map((s) => ({ ...s }));
+  else if (isEntry) {
+    parts = entrySessions(add as Entry).map((s) => ({ ...s }));
+    noteOnSession = !add.auto;
+  } else if (!add.auto && totalOf(add) > 0) {
+    parts = [newSession(totalOf(add), add.note, meta)];
+    noteOnSession = true;
+  }
+  if (parts.length) (target.auto ? (target.sessions ??= []) : ownSessions(target)).push(...parts);
   if (target.measure === 'time') {
     target.minutes = round2((target.minutes ?? 0) + (add.minutes ?? 0));
   } else {
@@ -776,7 +798,7 @@ export function mergeInto(target: Entry, add: EntryInput | Entry) {
       target.losses = (target.losses ?? 0) + (add.losses ?? 0);
     }
   }
-  const notes = [target.note, add.note].map((n) => n?.trim()).filter((n): n is string => !!n);
+  const notes = [target.note, noteOnSession ? undefined : add.note].map((n) => n?.trim()).filter((n): n is string => !!n);
   target.note = notes.length ? [...new Set(notes)].join('\n') : undefined;
   if (add.auto) {
     const t = target.auto;
@@ -832,13 +854,18 @@ export function entryTarget(
 }
 
 /** Add to the day's entry for the same activity (and account, for games), or create a new one next to its others. */
-export function addToDay(day: Day, input: EntryInput, splitAccounts = true): { entry: Entry; merged: boolean } {
+export function addToDay(day: Day, input: EntryInput, splitAccounts = true, meta?: SessionMeta): { entry: Entry; merged: boolean } {
   const target = entryTarget(day, input, splitAccounts);
   if (target) {
-    mergeInto(target, input);
+    mergeInto(target, input, meta);
     return { entry: target, merged: true };
   }
   const entry = newEntry(input);
+  // Logged by hand, by a timer or a routine: the entry's first session (its note goes with it).
+  if (!entry.auto && !entry.sessions && totalOf(entry) > 0) {
+    entry.sessions = [newSession(totalOf(entry), entry.note, meta)];
+    delete entry.note;
+  }
   const siblings = dayEntriesOf(day, input.activityId, input.measure);
   if (siblings.length) day.entries.splice(day.entries.indexOf(siblings[siblings.length - 1]) + 1, 0, entry);
   else day.entries.push(entry);
@@ -952,6 +979,8 @@ export interface MovePart {
   losses?: number;
   /** Tracked matches of the entry that go along with the moved games. */
   matchIds?: string[];
+  /** Sessions of the entry to move (their minutes or amounts are what's moved). */
+  sessionIds?: string[];
 }
 
 /**
@@ -974,15 +1003,27 @@ export function moveEntry(
   const own = data.matches.filter((m) => m.entryId === entry.id);
   const upTo = (v: number | undefined, max: number, all: number) => Math.min(max, Math.max(0, round2(v ?? all)));
   const input: EntryInput = { activityId: entry.activityId, measure: entry.measure };
+  // Whole sessions picked: what they add up to is what moves.
+  const pickedIds = new Set(part?.sessionIds ?? []);
+  const picked = pickedIds.size ? entrySessions(entry).filter((s) => pickedIds.has(s.id)) : [];
+  if (pickedIds.size) {
+    if (!picked.length) return null;
+    const sum = round2(picked.reduce((a, s) => a + s.value, 0));
+    part = entry.measure === 'time' ? { minutes: sum, sessionIds: part!.sessionIds } : { amount: sum, sessionIds: part!.sessionIds };
+  }
   let whole: boolean;
   let moving = own;
+  let movedSessions: EntrySession[] = [];
   if (entry.measure === 'time') {
     const total = entry.minutes ?? 0;
     const m = upTo(part?.minutes, total, total);
     whole = m >= total;
     if (!whole && m <= 0) return null;
     input.minutes = m;
-    if (!whole) entry.minutes = round2(total - m);
+    if (!whole) {
+      entry.minutes = round2(total - m);
+      movedSessions = picked.length ? takeSessions(entry, pickedIds) : takeFromEnd(entry, m);
+    }
   } else {
     const total = entry.amount ?? 0;
     const a = upTo(part?.amount, total, total);
@@ -1003,12 +1044,17 @@ export function moveEntry(
       const ids = new Set(part?.matchIds ?? []);
       moving = own.filter((m) => ids.has(m.id)).slice(0, a);
       entry.amount = total - a;
+      // The games added by hand that go along come off the entry's latest sessions.
+      movedSessions = picked.length ? takeSessions(entry, pickedIds) : takeFromEnd(entry, a - moving.length);
     }
   }
   if (whole) {
-    input.note = entry.note;
+    // Its sessions go along (their notes with them); a game entry's own note too.
+    input.note = entry.auto ? entry.note : undefined;
+    movedSessions = entry.auto ? entry.sessions ?? [] : entrySessions(entry);
     src.entries = src.entries.filter((e) => e !== entry);
   }
+  if (movedSessions.length) input.sessions = movedSessions.map((s) => ({ ...s }));
   if (entry.auto && (whole || moving.length)) {
     input.auto = { ...entry.auto };
     // Part of a merged entry, all from one account: it goes to that account's entry there.
@@ -1095,6 +1141,191 @@ export function isToday(date: string) {
 
 export function newEntry(partial: EntryInput): Entry {
   return { id: uid(), createdAt: new Date().toISOString(), ...partial };
+}
+
+// ---------------------------------------------------------------- sessions (1.10)
+
+/** How a session was logged (passed along when something is added to a day). */
+export interface SessionMeta {
+  by?: SessionSource;
+  routineItemId?: string;
+}
+
+/** An entry's total in its own measure. */
+const totalOf = (e: Pick<Entry, 'measure' | 'minutes' | 'amount'>) => (e.measure === 'time' ? e.minutes ?? 0 : e.amount ?? 0);
+
+function newSession(value: number, note?: string, meta?: SessionMeta): EntrySession {
+  const s: EntrySession = { id: uid(), value: round2(value), at: new Date().toISOString() };
+  const n = note?.trim();
+  if (n) s.note = n;
+  if (meta?.by) s.by = meta.by;
+  if (meta?.routineItemId) s.routineItemId = meta.routineItemId;
+  return s;
+}
+
+/**
+ * The sessions an entry is made of, oldest first. An entry from before 1.10 is one session (with the
+ * entry's note); a game entry without a list has none (its games are the tracked matches).
+ */
+export function entrySessions(e: Entry): EntrySession[] {
+  if (e.sessions) return e.sessions;
+  if (e.auto) return [];
+  const v = totalOf(e);
+  if (v <= 0) return [];
+  const s: EntrySession = { id: `${e.id}-0`, value: round2(v), at: e.createdAt };
+  if (e.note?.trim()) s.note = e.note.trim();
+  return [s];
+}
+
+/** The entry's own session list (made from its total for entries from before 1.10, the note moving onto it). */
+function ownSessions(e: Entry): EntrySession[] {
+  if (!e.sessions) {
+    e.sessions = entrySessions(e).map((s) => ({ ...s }));
+    if (!e.auto) delete e.note;
+  }
+  return e.sessions;
+}
+
+/** Every note of an entry: its own (game entries) and each session's. */
+export function entryNotes(e: Entry): string[] {
+  const all = [e.note, ...entrySessions(e).map((s) => s.note)].map((n) => n?.trim()).filter((n): n is string => !!n);
+  return [...new Set(all)];
+}
+
+/** Take `v` off the entry's latest sessions (splitting one if needed). Returns what was taken, oldest first. */
+function takeFromEnd(e: Entry, v: number): EntrySession[] {
+  if (!e.sessions && e.auto) return [];
+  const list = ownSessions(e);
+  const out: EntrySession[] = [];
+  let left = round2(v);
+  while (left > 0 && list.length) {
+    const s = list[list.length - 1];
+    if (s.value <= left) {
+      list.pop();
+      out.unshift(s);
+      left = round2(left - s.value);
+    } else {
+      // Part of a session: the note stays with the part that stays.
+      s.value = round2(s.value - left);
+      const piece: EntrySession = { id: uid(), value: left, at: s.at };
+      if (s.by) piece.by = s.by;
+      out.unshift(piece);
+      left = 0;
+    }
+  }
+  return out;
+}
+
+/** Take these sessions out of the entry. */
+function takeSessions(e: Entry, ids: Set<string>): EntrySession[] {
+  const list = ownSessions(e);
+  const out = list.filter((s) => ids.has(s.id));
+  e.sessions = list.filter((s) => !ids.has(s.id));
+  return out;
+}
+
+/** Take `v` off an entry's sessions: first off what a routine item logged, then off the latest. */
+function takeOff(e: Entry, v: number, routineItemId?: string) {
+  if (!e.sessions && e.auto) return;
+  const list = ownSessions(e);
+  let left = round2(v);
+  for (const s of list) {
+    if (!routineItemId || s.routineItemId !== routineItemId || left <= 0) continue;
+    const t = Math.min(left, s.value);
+    s.value = round2(s.value - t);
+    left = round2(left - t);
+  }
+  e.sessions = list.filter((s) => s.value > 0);
+  if (left > 0) takeFromEnd(e, left);
+}
+
+/**
+ * After an entry's total changed outside its sessions (edited by hand): the sessions follow. More is
+ * added to the latest session, less comes off the latest ones. `handTotal` is the entry's total
+ * (for game entries, the part not from tracked matches).
+ */
+export function fitSessions(e: Entry, handTotal: number) {
+  if (!e.sessions && e.auto) return;
+  const list = ownSessions(e);
+  const diff = round2(handTotal - list.reduce((a, s) => a + s.value, 0));
+  if (diff > 0) {
+    if (list.length) list[list.length - 1].value = round2(list[list.length - 1].value + diff);
+    else list.push(newSession(diff, undefined, { by: 'hand' }));
+  } else if (diff < 0) takeFromEnd(e, -diff);
+}
+
+/** Load-time check of an entry's sessions (dropped if broken; their sum always matches the entry's total). */
+function normalizeSessions(e: Entry) {
+  if (!Array.isArray(e.sessions)) {
+    delete e.sessions;
+    return;
+  }
+  e.sessions = e.sessions
+    .filter((s: any) => s && typeof s === 'object' && typeof s.value === 'number' && Number.isFinite(s.value) && s.value > 0)
+    .map((s: any) => {
+      const out: EntrySession = { ...s, id: typeof s.id === 'string' && s.id ? s.id : uid(), at: typeof s.at === 'string' ? s.at : e.createdAt };
+      if (typeof out.note !== 'string' || !out.note.trim()) delete out.note;
+      return out;
+    });
+  if (!e.auto) fitSessions(e, totalOf(e));
+}
+
+/**
+ * Change one session of an entry (its minutes or amount, and/or its note); the entry's total follows.
+ * A session at 0 is removed, and an entry left with nothing goes away. Returns false if not found.
+ */
+export function updateSession(
+  data: AppData,
+  seasonId: string,
+  dayId: string,
+  entryId: string,
+  sessionId: string,
+  change: { value?: number; note?: string },
+): boolean {
+  const day = findDay(data, seasonId, dayId);
+  const e = day?.entries.find((x) => x.id === entryId);
+  if (!day || !e) return false;
+  if (!entrySessions(e).some((x) => x.id === sessionId)) return false;
+  const s = ownSessions(e).find((x) => x.id === sessionId)!;
+  if (change.note !== undefined) {
+    const n = change.note.trim();
+    if (n) s.note = n;
+    else delete s.note;
+  }
+  if (change.value !== undefined) {
+    const v = round2(Math.max(0, change.value));
+    const diff = round2(v - s.value);
+    if (!diff) return true;
+    s.value = v;
+    if (e.measure === 'time') e.minutes = round2(Math.max(0, (e.minutes ?? 0) + diff));
+    else {
+      e.amount = round2(Math.max(0, (e.amount ?? 0) + diff));
+      if (e.wins !== undefined || e.losses !== undefined) {
+        // Never more results than games.
+        e.losses = Math.min(e.losses ?? 0, e.amount);
+        e.wins = Math.min(e.wins ?? 0, e.amount - e.losses);
+      }
+    }
+    if (v <= 0) e.sessions = e.sessions!.filter((x) => x !== s);
+    if (totalOf(e) <= 0 && !e.auto) day.entries = day.entries.filter((x) => x !== e);
+    if (diff < 0) trimRoutineLogs(day, e.activityId, e.measure);
+  }
+  return true;
+}
+
+/** Delete one session of an entry (its minutes or amount come off the day). */
+export function deleteSession(data: AppData, seasonId: string, dayId: string, entryId: string, sessionId: string): boolean {
+  return updateSession(data, seasonId, dayId, entryId, sessionId, { value: 0 });
+}
+
+/** Set (or clear) the note of one tracked game. */
+export function setMatchNote(data: AppData, matchId: string, note: string): boolean {
+  const m = data.matches.find((x) => x.id === matchId);
+  if (!m) return false;
+  const n = note.trim();
+  if (n) m.note = n;
+  else delete m.note;
+  return true;
 }
 
 // ---------------------------------------------------------------- routines
@@ -1297,7 +1528,7 @@ export function routineProgress(day: Day, dr: DayRoutine) {
  * passes what was actually done, a stopwatch item ticked by hand adds nothing.
  * Returns false if it was already done.
  */
-export function completeRoutineItem(day: Day, dayRoutineId: string, itemId: string, value?: number, note?: string) {
+export function completeRoutineItem(day: Day, dayRoutineId: string, itemId: string, value?: number, note?: string, by: SessionSource = 'routine') {
   const item = findDayRoutine(day, dayRoutineId)?.items.find((i) => i.id === itemId);
   if (!item) return false;
   const st = routineItemState(day, itemId);
@@ -1306,10 +1537,10 @@ export function completeRoutineItem(day: Day, dayRoutineId: string, itemId: stri
   item.done = true;
   if (itemMeasure(item) === 'amount') {
     item.loggedAmount = v;
-    if (v > 0) addToDay(day, { activityId: item.activityId, measure: 'amount', amount: v, note: note ?? item.note });
+    if (v > 0) addToDay(day, { activityId: item.activityId, measure: 'amount', amount: v, note: note ?? item.note }, true, { by, routineItemId: item.id });
   } else {
     item.loggedMinutes = v;
-    if (v > 0) addToDay(day, { activityId: item.activityId, measure: 'time', minutes: v, note: note ?? item.note });
+    if (v > 0) addToDay(day, { activityId: item.activityId, measure: 'time', minutes: v, note: note ?? item.note }, true, { by, routineItemId: item.id });
   }
   return true;
 }
@@ -1326,6 +1557,7 @@ export function undoRoutineItem(day: Day, dayRoutineId: string, itemId: string) 
   // The entry the routine added to (the hand-logged one).
   const entry = entryTarget(day, { activityId: item.activityId, measure }) ?? findDayEntry(day, item.activityId, measure);
   if (entry && v > 0) {
+    takeOff(entry, v, item.id);
     if (measure === 'amount') entry.amount = round2(Math.max(0, (entry.amount ?? 0) - v));
     else entry.minutes = round2(Math.max(0, (entry.minutes ?? 0) - v));
     if (!entryValue(entry, measure) && !entry.auto) day.entries = day.entries.filter((e) => e !== entry);

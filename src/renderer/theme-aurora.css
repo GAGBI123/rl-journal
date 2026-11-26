@@ -893,9 +893,15 @@
   box-shadow: var(--glass-shine), 0 24px 50px -20px rgba(0, 0, 0, 0.9);
 }
 
-[data-theme='aurora'] .acct-parts {
+[data-theme='aurora'] .entry-details {
   border-color: var(--glass-border);
   background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+}
+
+[data-theme='aurora'] .ed-row + .ed-row,
+[data-theme='aurora'] .ed-accounts {
+  border-color: rgba(255, 255, 255, 0.07);
 }
 
 [data-theme='aurora'] table.table tr.m-group td {

@@ -8,7 +8,10 @@ import {
   addToDay,
   childSections,
   createSection,
+  entryNotes,
+  entrySessions,
   entryTarget,
+  fitSessions,
   findOrCreateActivity,
   findSeason,
   mergeInto,
@@ -58,7 +61,10 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     return String((editing.measure === 'amount' ? editing.amount : +(editing.minutes ?? 0).toFixed(2)) ?? '');
   });
   const [wins, setWins] = useState(editing?.wins !== undefined ? String(editing.wins) : '');
-  const [note, setNote] = useState(editing?.note ?? '');
+  // An entry logged in several sessions has a note per session (edited on the day page, not here).
+  // A game entry's description is its own.
+  const manySessions = !!editing && !editing.auto && entrySessions(editing).length > 1;
+  const [note, setNote] = useState((editing ? (editing.auto ? editing.note : entryNotes(editing)[0]) : '') ?? '');
 
   const section = sections.find((s) => s.id === sectionId);
   const isGames = section?.kind === 'games';
@@ -176,7 +182,25 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       const desc = note.trim() || undefined;
       if (old) {
         const switched = old.activityId !== activity.id || old.measure !== measure;
-        Object.assign(old, fields, { activityId: activity.id, note: desc });
+        const measureChanged = old.measure !== measure;
+        const allNotes = entryNotes(old).join('\n') || undefined;
+        Object.assign(old, fields, { activityId: activity.id });
+        // Game entries keep their own description; so do entries from before 1.10 (one session).
+        if (old.auto || !old.sessions) old.note = desc;
+        if (old.sessions) {
+          // The sessions follow the new total (for games: the part not from tracked matches).
+          const tracked = d.matches.filter((m) => m.entryId === old.id).length;
+          const hand = measure === 'time' ? +base.toFixed(2) : old.auto ? Math.max(0, num - tracked) : num;
+          // Minutes and amounts don't mix: switching between them makes it one session.
+          if (measureChanged) old.sessions = [];
+          fitSessions(old, hand);
+          const only = !old.auto && old.sessions.length === 1 ? old.sessions[0] : undefined;
+          const n = manySessions ? (measureChanged ? allNotes : undefined) : desc;
+          if (only && (!manySessions || measureChanged)) {
+            if (n) only.note = n;
+            else delete only.note;
+          }
+        }
         // Switched to an activity that is already logged today: combine the two.
         const twin = switched ? entryTarget(target, old, d.settings.splitAccounts, old.id) : undefined;
         if (twin) {
@@ -185,7 +209,7 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
           for (const m of d.matches) if (m.entryId === old.id) m.entryId = twin.id;
         }
       } else {
-        const res = addToDay(target, { activityId: activity.id, ...fields, note: desc });
+        const res = addToDay(target, { activityId: activity.id, ...fields, note: desc }, d.settings.splitAccounts, { by: 'hand' });
         if (res.merged) mergedTotal = measure === 'time' ? res.entry.minutes : res.entry.amount;
       }
       setActivityId(activity.id);
@@ -412,14 +436,21 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
         <div className="step-label">
           <span className="n">4</span> Description <span className="muted" style={{ fontWeight: 500 }}>(optional)</span>
         </div>
-        <textarea
-          className="input desc"
-          rows={2}
-          placeholder={isGames ? 'How did it go? e.g. good rotations, lost to kickoffs…' : 'What did you work on? e.g. aerials, dribbles, flicks…'}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && submit()}
-        />
+        {manySessions ? (
+          <div className="muted small">
+            Logged in {entrySessions(editing!).length} sessions, each with its own note: open “{entrySessions(editing!).length} sessions” on the entry
+            to change them. A new total is added to (or taken off) the latest session.
+          </div>
+        ) : (
+          <textarea
+            className="input desc"
+            rows={2}
+            placeholder={isGames ? 'How did it go? e.g. good rotations, lost to kickoffs…' : 'What did you work on? e.g. aerials, dribbles, flicks…'}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && submit()}
+          />
+        )}
       </div>
 
       {existing && (

@@ -2,6 +2,7 @@
 // Rocket League season suggestions and recordable shortcuts.
 import { describe, expect, it } from 'vitest';
 import {
+  entryNotes,
   addToDay,
   completeRoutineItem,
   createDefaultData,
@@ -90,7 +91,8 @@ describe('routines', () => {
     // A timer passes the time actually done.
     completeRoutineItem(day, dr.id, dr.items[1].id, 12);
     expect(day.entries.find((e) => e.activityId === 'act-freeplay')).toMatchObject({ minutes: 10 });
-    expect(day.entries.find((e) => e.activityId === aerials.id)).toMatchObject({ minutes: 17, note: 'fast aerials' });
+    expect(day.entries.find((e) => e.activityId === aerials.id)).toMatchObject({ minutes: 17 });
+    expect(entryNotes(day.entries.find((e) => e.activityId === aerials.id)!)).toEqual(['fast aerials']);
     // 1.5: the 5 min of Aerials logged before the routine was added count towards it (5 + 12).
     expect(routineProgress(day, dr)).toMatchObject({ done: 2, total: 2, minutesDone: 27, minutesTotal: 25, complete: true });
     expect(nextRoutineItem(day, dr)).toBeUndefined();

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, ListChecks, Merge, Moon, NotebookPen, Pencil, Radio, RotateCcw, Split, Trash2, Trophy, Zap } from 'lucide-react';
+import { ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, Layers, ListChecks, Merge, Moon, NotebookPen, Pencil, Radio, RotateCcw, Split, Trash2, Trophy, Zap } from 'lucide-react';
 import { useStore } from '../store';
 import {
   activityById,
@@ -9,6 +9,8 @@ import {
   dayNumber,
   deleteMatch,
   entryAccountParts,
+  entryNotes,
+  entrySessions,
   findSeason,
   inRecord,
   matchInRecord,
@@ -29,11 +31,8 @@ import { confirmDialog, EmptyState, Modal } from '../components/ui';
 import { DayRoutines, StartRoutineModal } from '../components/DayRoutines';
 import { RunningTimerCard } from '../components/TimerPill';
 import { endCurrentDay, MoveEntryModal, reopenEndedDay } from '../components/DayTools';
+import { EntryDetails, entryMatches, looksNotStarted } from '../components/EntryDetails';
 import type { Account, Entry, EntrySort, MatchRecord, MatchSort } from '../../shared/model';
-
-/** A logged game with no sign of play: most likely a match that was cancelled before kickoff. */
-const looksNotStarted = (m: MatchRecord) =>
-  !!m.me && !m.me.touches && !m.me.score && !m.me.goals && !m.me.shots && !m.me.saves && !m.teamScore && !m.opponentScore;
 
 export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }) {
   const data = useStore((s) => s.data);
@@ -44,9 +43,10 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   const [editing, setEditing] = useState<Entry | null>(null);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [pickRoutine, setPickRoutine] = useState(false);
-  const [moving, setMoving] = useState<Entry | null>(null);
-  // Merged entries whose per-account breakdown is open.
-  const [openParts, setOpenParts] = useState<Set<string>>(() => new Set());
+  // The entry being moved (or one of its sessions).
+  const [moving, setMoving] = useState<{ entry: Entry; sessionId?: string } | null>(null);
+  // Entries opened to show each game / session.
+  const [openEntries, setOpenEntries] = useState<Set<string>>(() => new Set());
   const toast = useStore((s) => s.toast);
 
   // Sorting games by wins would show the wins of a day whose record is hidden.
@@ -141,17 +141,17 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
     const n = dayEntriesOf(day, e.activityId, e.measure).length;
     mutate((d) => {
       const merged = mergeAccountEntries(d, season.id, day.id, e.id);
-      if (merged) setOpenParts((s) => new Set(s).add(merged.id));
+      if (merged) setOpenEntries((s) => new Set(s).add(merged.id));
     });
-    toast({ kind: 'success', title: `${name}: ${n} entries merged`, body: 'Later games on any account today join it too. Click the accounts badge to see each one.' });
+    toast({ kind: 'success', title: `${name}: ${n} entries merged`, body: 'Later games on any account today join it too. Open it to see each game and account.' });
   };
 
   const splitEntry = (e: Entry) => {
     mutate((d) => void splitEntryByAccount(d, season.id, day.id, e.id));
   };
 
-  const toggleParts = (id: string) =>
-    setOpenParts((s) => {
+  const toggleOpen = (id: string) =>
+    setOpenEntries((s) => {
       const n = new Set(s);
       if (n.has(id)) n.delete(id);
       else n.add(id);
@@ -299,125 +299,141 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                 </div>
                 {entries.map((e) => {
                   const a = activityById(data, e.activityId);
-                  const { parts, byHand } = e.auto ? entryAccountParts(data, e) : { parts: [], byHand: 0 };
+                  const { parts } = e.auto ? entryAccountParts(data, e) : { parts: [] };
                   // One account's games, or games from several accounts merged (games with no known account join either).
                   const known = parts.filter((p) => p.accountId);
                   const merged = !!e.auto && (!!e.auto.merged || known.length > 1);
                   const account = accountOf(merged ? undefined : e.auto?.accountId ?? known[0]?.accountId);
-                  const partsOpen = merged && parts.length > 0 && openParts.has(e.id);
                   // Other entries of this activity today (e.g. the same mode on another account).
                   const siblings = dayEntriesOf(day, e.activityId, e.measure).length;
                   const counts = inRecord(data, e.activityId);
                   const hasResults = (e.wins !== undefined || e.losses !== undefined) && e.measure === 'amount';
+                  // Opens to show each game (tracked matches) and each session (timers, routines, added by hand).
+                  const games = entryMatches(data.matches, e);
+                  const sessions = entrySessions(e);
+                  const isGames = section.kind === 'games';
+                  const openable = games.length > 0 || sessions.length > 1;
+                  const open = openable && openEntries.has(e.id);
+                  const gameNotes = games.filter((m) => m.note).length;
+                  const notes = entryNotes(e);
+                  // Open, each game and session shows its own note (a game entry's own note stays).
+                  const shownNotes = open ? (e.auto && e.note?.trim() ? [e.note.trim()] : []) : notes;
+                  const openLabel = games.length
+                    ? `${games.length} ${games.length === 1 ? 'game' : 'games'}${sessions.length ? ` + ${sessions.length} by hand` : ''}`
+                    : `${sessions.length} sessions`;
                   return (
-                    <div className={`entry-row ${partsOpen ? 'parts-open' : ''}`} key={e.id} style={{ ['--e-color' as any]: section.color }}>
+                    <div className={`entry-row ${open ? 'open' : ''}`} key={e.id} style={{ ['--e-color' as any]: section.color }}>
                       <div className="e-bar" />
-                      <div style={{ minWidth: 0 }}>
-                        <div className="e-name row" style={{ gap: 8 }}>
-                          {a?.name ?? 'Unknown'}
-                          {e.auto &&
-                            (merged ? (
-                              <button
-                                type="button"
-                                className="badge blue acct-badge merged"
-                                aria-expanded={partsOpen}
-                                title={partsOpen ? 'Hide the games per account' : 'Show how many games were on each account'}
-                                onClick={() => toggleParts(e.id)}
-                                disabled={!parts.length}
-                              >
-                                <Radio size={11} /> Auto · {known.length > 1 ? `${known.length} accounts` : accountOf(known[0]?.accountId)?.label ?? 'all accounts'}
-                                {parts.length > 0 && <ChevronDown size={11} className="chev" />}
-                              </button>
-                            ) : (
-                              <span
-                                className={`badge blue acct-badge ${account ? 'tinted' : ''}`}
-                                style={account ? { ['--acct' as any]: account.color } : undefined}
-                                title={account ? `Played on ${account.label}` : 'Logged by the live game connection'}
-                              >
-                                {account ? <span className="acct-dot" /> : <Radio size={11} />} Auto{account ? ` · ${account.label}` : ''}
-                              </span>
-                            ))}
-                        </div>
-                        <div className="e-meta">
-                          {e.measure === 'time' ? (
-                            <span className="row" style={{ gap: 4, display: 'inline-flex' }}>
-                              <Clock size={11} /> {`${+(e.minutes ?? 0).toFixed(2)} min`}
-                            </span>
-                          ) : (
-                            <span>{section.kind === 'games' ? 'Games' : 'Amount'}</span>
-                          )}
-                          {showRecord && hasResults && counts && (
-                            <span>
-                              {' '}
-                              · <span className="up">{e.wins ?? 0}W</span> <span className="down">{e.losses ?? 0}L</span>
-                              {(e.wins ?? 0) + (e.losses ?? 0) < (e.amount ?? 0) && (
-                                <span className="muted"> · {(e.amount ?? 0) - (e.wins ?? 0) - (e.losses ?? 0)} unknown</span>
+                      <div className="e-body">
+                        <div className="e-main">
+                          <div style={{ minWidth: 0 }}>
+                            <div className="e-name row" style={{ gap: 8 }}>
+                              <span className="e-title">{a?.name ?? 'Unknown'}</span>
+                              {e.auto &&
+                                (merged ? (
+                                  <button
+                                    type="button"
+                                    className="badge blue acct-badge merged"
+                                    aria-expanded={open}
+                                    title={open ? 'Hide the games' : 'Show each game and how many were on each account'}
+                                    onClick={() => toggleOpen(e.id)}
+                                    disabled={!openable}
+                                  >
+                                    <Radio size={11} /> Auto · {known.length > 1 ? `${known.length} accounts` : accountOf(known[0]?.accountId)?.label ?? 'all accounts'}
+                                  </button>
+                                ) : (
+                                  <span
+                                    className={`badge blue acct-badge ${account ? 'tinted' : ''}`}
+                                    style={account ? { ['--acct' as any]: account.color } : undefined}
+                                    title={account ? `Played on ${account.label}` : 'Logged by the live game connection'}
+                                  >
+                                    {account ? <span className="acct-dot" /> : <Radio size={11} />} Auto{account ? ` · ${account.label}` : ''}
+                                  </span>
+                                ))}
+                              {openable && (
+                                <button
+                                  type="button"
+                                  className="badge open-badge"
+                                  aria-expanded={open}
+                                  title={open ? 'Hide' : isGames || games.length ? 'Show each game: score, stats and notes' : 'Show each session, with its own note'}
+                                  onClick={() => toggleOpen(e.id)}
+                                >
+                                  <Layers size={11} /> {openLabel}
+                                  <ChevronDown size={11} className="chev" />
+                                </button>
                               )}
-                            </span>
-                          )}
-                          {showRecord && hasResults && !counts && (
-                            <span title="Private matches are left out of your wins and losses (Settings → Games & logging)"> · not in your record</span>
-                          )}
-                        </div>
-                        {e.note && <div className="e-desc">{e.note}</div>}
-                        {partsOpen && (
-                          <div className="acct-parts">
-                            {parts.map((p) => {
-                              const acc = accountOf(p.accountId);
-                              return (
-                                <div className="acct-part" key={p.accountId ?? '-'} style={acc ? { ['--acct' as any]: acc.color } : undefined}>
-                                  <span className="acct-dot" />
-                                  <span className="acct-name">{acc?.label ?? 'Unknown account'}</span>
-                                  <span className="acct-n">{fmtNum(p.games)} {p.games === 1 ? 'game' : 'games'}</span>
-                                  {showRecord && counts && p.wins + p.losses > 0 && (
-                                    <span className="small">
-                                      <span className="up">{p.wins}W</span> <span className="down">{p.losses}L</span>
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {byHand > 0 && (
-                              <div className="acct-part hand">
-                                <span className="acct-dot" />
-                                <span className="acct-name">Added by hand</span>
-                                <span className="acct-n">
-                                  {fmtNum(byHand)} {byHand === 1 ? 'game' : 'games'}
+                            </div>
+                            <div className="e-meta">
+                              {e.measure === 'time' ? (
+                                <span className="row" style={{ gap: 4, display: 'inline-flex' }}>
+                                  <Clock size={11} /> {`${+(e.minutes ?? 0).toFixed(2)} min`}
                                 </span>
-                              </div>
-                            )}
+                              ) : (
+                                <span>{section.kind === 'games' ? 'Games' : 'Amount'}</span>
+                              )}
+                              {showRecord && hasResults && counts && (
+                                <span>
+                                  {' '}
+                                  · <span className="up">{e.wins ?? 0}W</span> <span className="down">{e.losses ?? 0}L</span>
+                                  {(e.wins ?? 0) + (e.losses ?? 0) < (e.amount ?? 0) && (
+                                    <span className="muted"> · {(e.amount ?? 0) - (e.wins ?? 0) - (e.losses ?? 0)} unknown</span>
+                                  )}
+                                </span>
+                              )}
+                              {showRecord && hasResults && !counts && (
+                                <span title="Private matches are left out of your wins and losses (Settings → Games & logging)"> · not in your record</span>
+                              )}
+                              {!open && gameNotes > 0 && (
+                                <span className="e-notes-hint" title="Open it to read the notes of each game">
+                                  {' '}
+                                  · <NotebookPen size={11} /> {gameNotes} {gameNotes === 1 ? 'note' : 'notes'}
+                                </span>
+                              )}
+                            </div>
+                            {shownNotes.length > 0 && <div className="e-desc">{shownNotes.join('\n')}</div>}
                           </div>
+                          <div className="e-value">
+                            {e.measure === 'time' ? fmtMinutes(e.minutes) : fmtNum(e.amount)}
+                            {e.measure === 'amount' && section.kind === 'games' && <div className="tiny muted" style={{ fontWeight: 500 }}>games</div>}
+                          </div>
+                          <div className="e-actions">
+                            {siblings > 1 && (
+                              <button
+                                className="icon-btn"
+                                title={`Merge the ${siblings} ${a?.name ?? ''} entries of this day into one (you can still see each account's games)`}
+                                aria-label="Merge with the other entries of this activity"
+                                onClick={() => mergeEntry(e)}
+                              >
+                                <Merge size={15} />
+                              </button>
+                            )}
+                            {merged && data.settings.splitAccounts && (
+                              <button className="icon-btn" title="Split by account: each account's games get their own entry again" aria-label="Split by account" onClick={() => splitEntry(e)}>
+                                <Split size={15} />
+                              </button>
+                            )}
+                            <button className="icon-btn" title="Move to another day" aria-label="Move entry to another day" onClick={() => setMoving({ entry: e })}>
+                              <ArrowRightLeft size={15} />
+                            </button>
+                            <button className="icon-btn" title="Edit" aria-label="Edit entry" onClick={() => setEditing(e)}>
+                              <Pencil size={15} />
+                            </button>
+                            <button className="icon-btn" title="Delete" aria-label="Delete entry" onClick={() => remove(e)}>
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                        {open && (
+                          <EntryDetails
+                            season={season}
+                            day={day}
+                            entry={e}
+                            games={isGames}
+                            showRecord={showRecord}
+                            onDeleteMatch={removeMatch}
+                            onMoveSession={(s) => setMoving({ entry: e, sessionId: s.id })}
+                          />
                         )}
-                      </div>
-                      <div className="e-value">
-                        {e.measure === 'time' ? fmtMinutes(e.minutes) : fmtNum(e.amount)}
-                        {e.measure === 'amount' && section.kind === 'games' && <div className="tiny muted" style={{ fontWeight: 500 }}>games</div>}
-                      </div>
-                      <div className="e-actions">
-                        {siblings > 1 && (
-                          <button
-                            className="icon-btn"
-                            title={`Merge the ${siblings} ${a?.name ?? ''} entries of this day into one (you can still see each account's games)`}
-                            aria-label="Merge with the other entries of this activity"
-                            onClick={() => mergeEntry(e)}
-                          >
-                            <Merge size={15} />
-                          </button>
-                        )}
-                        {merged && data.settings.splitAccounts && (
-                          <button className="icon-btn" title="Split by account: each account's games get their own entry again" aria-label="Split by account" onClick={() => splitEntry(e)}>
-                            <Split size={15} />
-                          </button>
-                        )}
-                        <button className="icon-btn" title="Move to another day" aria-label="Move entry to another day" onClick={() => setMoving(e)}>
-                          <ArrowRightLeft size={15} />
-                        </button>
-                        <button className="icon-btn" title="Edit" aria-label="Edit entry" onClick={() => setEditing(e)}>
-                          <Pencil size={15} />
-                        </button>
-                        <button className="icon-btn" title="Delete" aria-label="Delete entry" onClick={() => remove(e)}>
-                          <Trash2 size={15} />
-                        </button>
                       </div>
                     </div>
                   );
@@ -516,6 +532,11 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                                   <span className="m-mode" title={multiAccount ? `Played on ${acc?.label ?? 'an unknown account'}` : undefined}>
                                     {activityById(data, m.activityId)?.name ?? m.mode}
                                   </span>
+                                  {m.note && (
+                                    <span className="m-note" title={m.note} aria-label={`Note: ${m.note}`}>
+                                      <NotebookPen size={12} />
+                                    </span>
+                                  )}
                                   {looksNotStarted(m) && (
                                     <span className="badge suspect" title="No touches, points or goals: this match probably never started (e.g. it was cancelled). Delete it if it wasn't a real game.">
                                       Didn't start?
@@ -583,7 +604,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
       </div>
 
       {pickRoutine && <StartRoutineModal season={season} day={day} onClose={() => setPickRoutine(false)} />}
-      {moving && <MoveEntryModal season={season} day={day} entry={moving} onClose={() => setMoving(null)} />}
+      {moving && <MoveEntryModal season={season} day={day} entry={moving.entry} sessionId={moving.sessionId} onClose={() => setMoving(null)} />}
       {editing && (
         <Modal title="Edit entry" onClose={() => setEditing(null)}>
           <EntryForm season={season} day={day} editing={editing} onDone={() => setEditing(null)} />

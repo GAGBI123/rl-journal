@@ -8,6 +8,7 @@ import {
   dayForDate,
   dayNumber,
   endDay,
+  entrySessions,
   findSeason,
   moveEntry,
   reopenDay,
@@ -58,8 +59,8 @@ export function reopenEndedDay() {
 const resultLabel = (m: MatchRecord) => (m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Left early' : 'Loss') : 'Unknown');
 const toInt = (v: string) => (v.trim() === '' ? 0 : Math.floor(Number(v)));
 
-/** Move an entry, or part of it, to another day. */
-export function MoveEntryModal({ season, day, entry, onClose }: { season: Season; day: Day; entry: Entry; onClose: () => void }) {
+/** Move an entry, or part of it (some of its sessions, or one), to another day. */
+export function MoveEntryModal({ season, day, entry, sessionId, onClose }: { season: Season; day: Day; entry: Entry; sessionId?: string; onClose: () => void }) {
   const data = useStore((s) => s.data);
   const mutate = useStore((s) => s.mutate);
   const toast = useStore((s) => s.toast);
@@ -88,12 +89,23 @@ export function MoveEntryModal({ season, day, entry, onClose }: { season: Season
   const [hand, setHand] = useState(String(handTotal));
   const [handWins, setHandWins] = useState(String(handWinsMax));
   const [handLosses, setHandLosses] = useState(String(handLossesMax));
+  // An entry logged in several sessions (and no tracked games): pick which sessions go. One session
+  // can also be moved from the entry's list on the day page.
+  const sessions = entrySessions(entry);
+  const bySession = !!sessionId || (sessions.length > 1 && !tracked.length);
+  const [pickedSessions, setPickedSessions] = useState<Set<string>>(() => new Set(sessionId ? [sessionId] : sessions.map((s) => s.id)));
+  const fmtValue = (v: number) => (entry.measure === 'time' ? fmtMinutes(v) : `${fmtNum(v, 2)}${isGames ? (v === 1 ? ' game' : ' games') : ''}`);
 
   let part: MovePart;
   let invalid = false;
   let resultsTooMany = false;
   let what: string;
-  if (entry.measure === 'time') {
+  if (bySession) {
+    const sum = sessions.filter((s) => pickedSessions.has(s.id)).reduce((a, s) => a + s.value, 0);
+    invalid = sum <= 0;
+    part = { sessionIds: [...pickedSessions] };
+    what = fmtValue(sum);
+  } else if (entry.measure === 'time') {
     const m = Number(minutes || 0);
     invalid = !(m > 0) || m > total + 1e-9;
     part = { minutes: m };
@@ -176,13 +188,56 @@ export function MoveEntryModal({ season, day, entry, onClose }: { season: Season
         </select>
       </Field>
 
-      {entry.measure === 'time' && (
+      {bySession && (
+        <Field
+          label={
+            <span className="row between" style={{ width: '100%' }}>
+              <span>
+                Sessions · {pickedSessions.size} of {sessions.length}
+              </span>
+              {sessions.length > 1 && (
+                <span className="row" style={{ gap: 4 }}>
+                  <button type="button" className="crumb-btn" onClick={() => setPickedSessions(new Set(sessions.map((s) => s.id)))}>
+                    All
+                  </button>
+                  <span className="muted">·</span>
+                  <button type="button" className="crumb-btn" onClick={() => setPickedSessions(new Set())}>
+                    None
+                  </button>
+                </span>
+              )}
+            </span>
+          }
+        >
+          <div className="move-list">
+            {sessions.map((s) => (
+              <label key={s.id} className={`move-row ${pickedSessions.has(s.id) ? 'on' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={pickedSessions.has(s.id)}
+                  onChange={() => {
+                    const next = new Set(pickedSessions);
+                    if (next.has(s.id)) next.delete(s.id);
+                    else next.add(s.id);
+                    setPickedSessions(next);
+                  }}
+                />
+                <span className="move-time">{new Date(s.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <b>{fmtValue(s.value)}</b>
+                <span className="muted move-arena">{s.note ?? ''}</span>
+              </label>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {!bySession && entry.measure === 'time' && (
         <Field label="Minutes to move" help={`of ${fmtMinutes(total)}`}>
           <NumberInput value={minutes} onChange={setMinutes} invalid={invalid && minutes !== ''} onEnter={submit} autoFocus />
         </Field>
       )}
 
-      {entry.measure === 'amount' && tracked.length > 0 && (
+      {!bySession && entry.measure === 'amount' && tracked.length > 0 && (
         <Field
           label={
             <span className="row between" style={{ width: '100%' }}>
@@ -219,7 +274,7 @@ export function MoveEntryModal({ season, day, entry, onClose }: { season: Season
         </Field>
       )}
 
-      {entry.measure === 'amount' && handTotal > 0 && (
+      {!bySession && entry.measure === 'amount' && handTotal > 0 && (
         <Field label={tracked.length ? 'Games added by hand' : isGames ? 'Games to move' : 'Amount to move'}>
           <div className="move-counts">
             <div>

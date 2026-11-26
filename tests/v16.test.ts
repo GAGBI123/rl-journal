@@ -2,6 +2,7 @@
 // can be moved to another day.
 import { describe, expect, it } from 'vitest';
 import {
+  entryNotes,
   addToDay,
   canEndDay,
   completeRoutineItem,
@@ -133,7 +134,9 @@ describe('moving entries to another day', () => {
     expect(a.entries).toHaveLength(0);
     expect(b.entries).toHaveLength(1);
     expect(to?.minutes).toBe(45);
-    expect(to?.note).toBe('aerials');
+    expect(entryNotes(to!)).toEqual(['aerials']);
+    // Its session goes along, next to the other day's own.
+    expect(to!.sessions!.map((s) => s.value)).toEqual([15, 30]);
   });
 
   it('moves part of a time entry', () => {
@@ -143,9 +146,10 @@ describe('moving entries to another day', () => {
     addToDay(a, { activityId: 'act-freeplay', measure: 'time', minutes: 30, note: 'aerials' });
     moveEntry(data, { seasonId: season.id, dayId: a.id }, a.entries[0].id, { seasonId: season.id, dayId: b.id }, { minutes: 10 });
     expect(a.entries[0].minutes).toBe(20);
-    expect(a.entries[0].note).toBe('aerials');
+    expect(entryNotes(a.entries[0])).toEqual(['aerials']);
     expect(b.entries[0].minutes).toBe(10);
-    expect(b.entries[0].note).toBeUndefined();
+    expect(entryNotes(b.entries[0])).toEqual([]);
+    expect(b.entries[0].sessions!.map((s) => s.value)).toEqual([10]);
     // Nothing to move: nothing happens.
     expect(moveEntry(data, { seasonId: season.id, dayId: a.id }, a.entries[0].id, { seasonId: season.id, dayId: b.id }, { minutes: 0 })).toBeNull();
     expect(a.entries[0].minutes).toBe(20);

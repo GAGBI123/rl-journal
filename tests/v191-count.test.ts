@@ -178,6 +178,21 @@ describe('amount items through the overlay', () => {
     expect(started[0]).toMatchObject({ mode: 'count', amount: 50, durationMs: 0, activityName: 'Air roll shots', label: 'Warm-up 2/3 · Air roll shots', routine: { itemId: dr.items[1].id } });
   });
 
+  it('1.10: logs each timer as a session of the entry (routine items with their item)', () => {
+    const { ref, dr, today } = setup(false);
+    const item = timerFor({ ...BASE, ...ref, activityId: 'act-freeplay', mode: 'down', durationMs: 600_000, routine: { dayRoutineId: dr.id, itemId: dr.items[0].id } });
+    logTimer({ timer: item, minutes: 10, early: false });
+    logTimer({ timer: timerFor({ ...BASE, ...ref, activityId: 'act-freeplay', mode: 'down', durationMs: 300_000 }), minutes: 5, early: false });
+    logTimer({ timer: timerFor({ ...BASE, ...ref, activityId: 'act-freeplay', mode: 'up', durationMs: 0, note: 'flicks' }), minutes: 12, early: true });
+    const e = today().entries.find((x: any) => x.activityId === 'act-freeplay');
+    expect(e.minutes).toBe(27);
+    expect(e.sessions.map((s: any) => [s.value, s.by, s.note ?? null, s.routineItemId === dr.items[0].id])).toEqual([
+      [10, 'timer', null, true],
+      [5, 'timer', null, false],
+      [12, 'stopwatch', 'flicks', false],
+    ]);
+  });
+
   it('goes timer → amount on the overlay → stopwatch with auto-next', async () => {
     const { ref, dr, today } = setup();
     // The 10-minute timer ends: the amount goes on the overlay by itself.

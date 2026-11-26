@@ -135,11 +135,12 @@ export function logTimer(c: TimerCompletion) {
     // completeRoutineItem logs the time (or, for a count, what's left of the amount) itself; if the
     // item is already done (e.g. logged meanwhile outside the routine), a timer's time is logged as a
     // plain entry instead. Never both.
-    const completed = !!dr && !!item && completeRoutineItem(day, dr.id, item.id, count ? undefined : c.minutes, t.note);
+    const by = t.mode === 'up' ? 'stopwatch' : count ? 'routine' : 'timer';
+    const completed = !!dr && !!item && completeRoutineItem(day, dr.id, item.id, count ? undefined : c.minutes, t.note, by);
     if (!completed) {
       // A count whose item was ticked off meanwhile (or removed) has nothing more to log.
       if (count) alreadyDone = true;
-      else addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, note: t.note });
+      else addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, note: t.note }, d.settings.splitAccounts, { by });
     }
     if (dr && item) {
       const n = nextRoutineItem(day, dr);

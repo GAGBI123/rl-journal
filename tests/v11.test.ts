@@ -1,7 +1,7 @@
 // Behaviour added in 1.1: ranked/casual/honor duel modes, one entry per activity per day,
 // player detection, activity order, and migrating 1.0 save files.
 import { describe, expect, it } from 'vitest';
-import { addToDay, createDefaultData, createSeason, findOrCreateActivity, moveActivity, normalizeData, sectionActivities } from '../src/renderer/lib/journal';
+import { addToDay, entryNotes, createDefaultData, createSeason, findOrCreateActivity, moveActivity, normalizeData, sectionActivities } from '../src/renderer/lib/journal';
 import { daySummary } from '../src/renderer/lib/stats';
 import { applyLiveMatch } from '../src/renderer/lib/sync';
 import { MatchTracker } from '../src/main/matchTracker';
@@ -123,7 +123,13 @@ describe('one entry per activity per day', () => {
     const r = addToDay(day, { activityId: 'act-freeplay', measure: 'time', minutes: 90, note: 'flicks' });
     expect(r.merged).toBe(true);
     expect(day.entries).toHaveLength(1);
-    expect(day.entries[0]).toMatchObject({ minutes: 120, note: 'aerials\nflicks' });
+    expect(day.entries[0]).toMatchObject({ minutes: 120 });
+    // 1.10: each add is a session of the entry, with its own note.
+    expect(day.entries[0].sessions!.map((s) => [s.value, s.note])).toEqual([
+      [30, 'aerials'],
+      [90, 'flicks'],
+    ]);
+    expect(entryNotes(day.entries[0])).toEqual(['aerials', 'flicks']);
     addToDay(day, { activityId: 'act-2s', measure: 'amount', amount: 5, wins: 3, losses: 2 });
     addToDay(day, { activityId: 'act-2s', measure: 'amount', amount: 2 });
     expect(day.entries[1]).toMatchObject({ amount: 7, wins: 3, losses: 2 });

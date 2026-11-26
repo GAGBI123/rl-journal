@@ -2598,7 +2598,7 @@ textarea.input.desc {
 
 .move-row {
   display: grid;
-  grid-template-columns: 18px 56px auto 1fr;
+  grid-template-columns: 18px max-content auto 1fr;
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
@@ -2623,6 +2623,7 @@ textarea.input.desc {
 
 .move-time {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .move-arena {
@@ -3397,55 +3398,6 @@ button.badge.acct-badge:not(:disabled):hover {
   transform: rotate(180deg);
 }
 
-.entry-row.parts-open {
-  align-items: flex-start;
-}
-
-.entry-row.parts-open .e-value,
-.entry-row.parts-open .e-actions {
-  align-self: center;
-}
-
-.acct-parts {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 8px;
-  padding: 7px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid var(--border);
-  min-width: 230px;
-}
-
-.acct-part {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-}
-
-.acct-part .acct-name {
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.acct-part .acct-n {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-}
-
-.acct-part.hand .acct-name {
-  font-weight: 500;
-  color: var(--muted);
-}
-
-.acct-part.hand .acct-dot {
-  background: transparent;
-  border: 1px solid var(--muted);
-  box-shadow: none;
-}
-
 /* Tracked matches: account dots + legend, and group rows */
 .m-legend {
   display: flex;
@@ -3751,4 +3703,238 @@ td.muted .m-result .m-score {
 
 .settings-panel {
   animation: fade-in 0.18s ease;
+}
+
+
+/* ------------------------------------------------------------- 1.10: games and sessions inside an entry */
+.entry-row .e-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-row .e-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.entry-row.open .e-actions {
+  opacity: 1;
+}
+
+button.badge.open-badge {
+  height: 19px;
+  font-size: 10.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.badge.open-badge:hover {
+  border-color: color-mix(in srgb, var(--blue) 60%, transparent);
+  color: var(--text);
+}
+
+.badge.open-badge .chev {
+  transition: transform 0.15s ease;
+}
+
+.badge.open-badge[aria-expanded='true'] {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--blue) 50%, transparent);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+.badge.open-badge[aria-expanded='true'] .chev {
+  transform: rotate(180deg);
+}
+
+.e-notes-hint svg {
+  vertical-align: -1px;
+}
+
+.entry-details {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  animation: fade-in 0.15s ease;
+}
+
+.ed-accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 6px 4px 7px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ed-accounts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ed-row {
+  padding: 3px 0;
+}
+
+.ed-row + .ed-row {
+  border-top: 1px solid var(--border);
+}
+
+.ed-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  font-size: 12.5px;
+}
+
+.ed-n {
+  flex: 0 0 24px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-time {
+  min-width: 62px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 118px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ed-score {
+  margin-left: 4px;
+  color: var(--text-2);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-stats {
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-stats b {
+  color: var(--text);
+}
+
+.ed-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 88px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.ed-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ed-value-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ed-value-edit .input {
+  width: 74px;
+  height: 28px;
+  padding: 0 8px;
+}
+
+.ed-actions {
+  display: flex;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.ed-actions .icon-btn {
+  width: 28px;
+  height: 28px;
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+/* A game or session with a note keeps its note button lit. */
+.ed-actions .icon-btn.has-note,
+.ed-row:hover .ed-actions .icon-btn,
+.ed-actions .icon-btn:focus-visible {
+  opacity: 1;
+}
+
+.entry-row .e-name {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.entry-row .e-title {
+  white-space: nowrap;
+}
+
+.icon-btn.has-note {
+  color: var(--blue-text, var(--blue));
+}
+
+.ed-note {
+  display: block;
+  width: calc(100% - 34px);
+  margin: 0 0 3px 34px;
+  padding: 3px 7px;
+  border: 0;
+  border-left: 2px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  border-radius: 0 6px 6px 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.ed-note:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ed-note-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 5px 34px;
+}
+
+.ed-note-edit textarea.input {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+
+.m-note {
+  display: inline-flex;
+  margin-left: 6px;
+  color: var(--blue-text, var(--blue));
+  vertical-align: -1px;
+  cursor: help;
 }

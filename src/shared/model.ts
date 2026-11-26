@@ -56,6 +56,28 @@ export interface Entry {
    * their own entry (accountId); `merged` = games from all accounts go into this one entry.
    */
   auto?: { source: 'game'; accountId?: string; merged?: boolean };
+  /**
+   * 1.10: each time something was added to the entry by hand, by a timer or by a routine (the
+   * entry's total is their sum; for game entries, the part not from tracked matches). Notes then
+   * live on the sessions, not on the entry. Missing on entries from before 1.10 (one session).
+   */
+  sessions?: EntrySession[];
+}
+
+/** How a session got onto the day. */
+export type SessionSource = 'hand' | 'timer' | 'stopwatch' | 'routine';
+
+/** One part of an entry: e.g. 5 minutes of dribbling from a timer, then 10 more later. */
+export interface EntrySession {
+  id: string;
+  /** Minutes (time entries) or the count (amount entries). */
+  value: number;
+  note?: string;
+  /** When it was logged. */
+  at: string;
+  by?: SessionSource;
+  /** The routine item that logged it (so unticking the item takes exactly this off). */
+  routineItemId?: string;
 }
 
 export interface Day {
@@ -179,6 +201,8 @@ export interface MatchRecord {
   teamScore?: number;
   opponentScore?: number;
   overtime?: boolean;
+  /** The user's note about this game. */
+  note?: string;
   source: 'game';
 }
 
