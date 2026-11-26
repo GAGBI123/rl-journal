@@ -31,7 +31,7 @@ Works on any modern 64-bit distribution (Arch / CachyOS, Fedora, Ubuntu, Debian,
 
 ### Updates
 
-RL Journal updates itself. New versions are downloaded in the background and installed when you're not in a match or using the app, and you get a message when it's done. You can turn that off in **Settings → Updates** and install updates with one click instead.
+RL Journal updates itself. New versions are downloaded in the background and installed when you're not in a match or using the app, and you get a message when it's done. You can turn that off in **Settings → App & updates** and install updates with one click instead.
 
 Your journal is never replaced, not by updates and not by running the installer again.
 
@@ -45,9 +45,9 @@ Your journal is never replaced, not by updates and not by running the installer 
 ### Seasons and days
 - Add a season and its dates are filled in from the **Rocket League season calendar**: the current season first, and if you already have it, the seasons before it (start date and length). Custom dates work too. A season that's already over is added as completed.
 - Add days with the **+** after the last day. Only the last day can be removed, and clearing a day empties it without removing it.
-- Close a season when it's over: the remaining days are removed and it's marked as completed on the home screen.
+- Close a season when it's over: the remaining days are removed and it's marked as completed. Completed seasons sit right next to the current one on the Seasons page, newest first.
 - A completed season opens with its **season recap**: training time, games and win rate, ranked 1v1 / 2v2 / 3v3 games with wins and losses, casual, Honor Duels and other modes, what you trained most, your best training day, most games in a day, longest streak, goals / assists / saves per game, shooting %, best match and games per account.
-- **Export a season as a text file** (**Export .txt** on the season), or every season at once, one file each (**Settings → Your data → Export seasons as text**). Each day is written out like a Notepad training log (what you trained and for how long, total training time, 1vs1 / 2vs2 / 3vs3 matches), with the season's totals at the end.
+- **Export a season as a text file** (**Export .txt** on the season), or every season at once, one file each (**Settings → Your data → Export seasons as text**). Each day is written out like a Notepad training log, by day number (day 1, day 2, …): every training activity with how long you did it, or **x** if you didn't that day, the total training time and 1vs1 / 2vs2 / 3vs3 matches (x when none), with the season's totals at the end.
 - **You end your days.** A day lasts until you press **End day** (in the sidebar or on the day), so a session that goes past midnight still counts for the day it started. Ended one by mistake? **Reopen day**. Prefer a new day at midnight? Turn off **End days yourself** in Settings.
 
 ### Daily log
@@ -76,7 +76,7 @@ Your journal is never replaced, not by updates and not by running the installer 
 - Pause, resume, stop (logs the time so far) or cancel from the top bar, or from the timer card on the day page.
 - While Rocket League is running, a small **overlay at the top of the screen** shows the time left and what it's for, with a pause button that doesn't take focus away from the game.
 - Press **Ctrl + Alt + P** to pause or resume and **Ctrl + Alt + O** to stop and log, also while you're in game (the game keeps the mouse to itself, so shortcuts are the surest way). Set any key or combination you like in Settings (click and press the keys), or turn them off.
-- The overlay works with Rocket League in **Borderless** or **Windowed** mode. In exclusive Fullscreen, Windows draws the game over every other window, so switch to Borderless (Settings → Video → Display mode) to see it. Drawing inside a fullscreen game would mean hooking into the game process, which anti-cheat doesn't allow. You can turn the overlay off or move it in **Settings → Timer & in-game overlay**.
+- The overlay works with Rocket League in **Borderless** or **Windowed** mode. In exclusive Fullscreen, Windows draws the game over every other window, so switch to Borderless (Settings → Video → Display mode) to see it. Drawing inside a fullscreen game would mean hooking into the game process, which anti-cheat doesn't allow. You can turn the overlay off or move it in **Settings → Timer & overlay**.
 - **Linux:** Wayland doesn't let apps keep a window on top of others, so on a Wayland desktop (KDE, GNOME, …) RL Journal runs through XWayland, like Rocket League under Proton does. There the overlay isn't handled by the window manager and stays above the game, in Borderless and Fullscreen. To keep RL Journal on native Wayland instead (no overlay over the game), start it with `RLJ_WAYLAND=1`.
 
 ### Automatic game logging
@@ -86,7 +86,7 @@ RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.co
 - **Honor Duels** are logged separately, with their own wins and losses. Duels you only watch (two others in your lobby) are not logged.
 - It works out which account you're playing on by itself, so it handles **multiple accounts** with no setup. The top bar shows *Game connected · your account*.
 - Freeplay, training, workshop maps and offline games are never logged. **Matches that never got going** (cancelled before kickoff, e.g. because a player didn't join) aren't logged either: no touches, no goals and no time on the clock means no game.
-- Private matches are logged too. In **Settings → Private matches** you can keep them out of your wins, losses and win rates (they still count as games), or not log them at all.
+- Private matches are logged too. In **Settings → Games & logging → Private matches** you can keep them out of your wins, losses and win rates (they still count as games), or not log them at all.
 - Win/loss tracking can be switched off separately for regular games and for Honor Duels.
 - You get a notification for each logged game.
 
@@ -100,7 +100,8 @@ RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.co
 ![Statistics](docs/screenshots/statistics.png)
 
 ### Make it yours
-- Two looks: **Aurora** (new in 1.7, the default: glass panels, glowing accents and bolder type) and **Classic** (the original look). Switch in **Settings → Appearance**.
+- Two looks: **Aurora** (new in 1.7, the default: glass panels, glowing accents and bolder type) and **Classic** (the original look). Switch in **Settings → Appearance**, where you can also choose to show long times in days (1d 4h 20m) or only in hours and minutes (28h 20m).
+- Settings work like a game's settings menu: tabs across the top (Appearance, Sections & activities, Games & logging, Timer & overlay, App & updates, Your data); the left and right arrow keys switch between them.
 - **Your own colors:** start from a set (*Purple haze*, *Toxic*, *Champion gold*, *Ice*, *Crimson*, *Mono*…) or pick the accent, second accent, background, cards, text, wins and losses yourself. They work with both looks.
 - **Any picture as the app icon:** the window, the taskbar, the tray and your RL Journal shortcuts (Windows) or the app-menu entry (Linux) use it. Choose whether it fills the square and has rounded corners; *Default icon* brings the RL Journal icon back.
 
@@ -162,7 +163,7 @@ This program will not transfer any information to other networked systems unless
 
 - **Your journal stays on your computer.** There is no account, no telemetry and no analytics.
 - **Rocket League Stats API:** to log games, the app connects to the game's Stats API on your own computer (`localhost`). This connection never leaves your PC. You can turn it off in **Accounts & Sync**.
-- **Updates:** every few hours the app asks GitHub (github.com) whether a newer version exists, and downloads it from there. Like any download, GitHub sees your IP address ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)). Nothing about you or your journal is sent. You can turn automatic checks off in **Settings → Updates**.
+- **Updates:** every few hours the app asks GitHub (github.com) whether a newer version exists, and downloads it from there. Like any download, GitHub sees your IP address ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)). Nothing about you or your journal is sent. You can turn automatic checks off in **Settings → App & updates**.
 - **Season dates:** when you add a season (and update checks are on), the app downloads the Rocket League season calendar (`seasons.json`) from this GitHub repository, so it knows about new seasons. Nothing is sent.
 - **App icon:** a picture you pick as the app icon is copied into your data folder. On Windows the app also points its own shortcuts (desktop, Start menu, taskbar pins) at it; *Default icon* undoes that.
 - **Game config:** the app changes Rocket League's `TAStatsAPI.ini` / `DefaultStatsAPI.ini` only when you click **Enable Stats API**, and keeps a backup of the original file.

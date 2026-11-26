@@ -344,7 +344,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                             </span>
                           )}
                           {showRecord && hasResults && !counts && (
-                            <span title="Private matches are left out of your wins and losses (Settings → Sync)"> · not in your record</span>
+                            <span title="Private matches are left out of your wins and losses (Settings → Games & logging)"> · not in your record</span>
                           )}
                         </div>
                         {e.note && <div className="e-desc">{e.note}</div>}
@@ -513,7 +513,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                                 {showRecord && (
                                   <td
                                     className={!countsHere ? 'muted' : m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}
-                                    title={countsHere ? undefined : 'Private match: not counted in your wins and losses (Settings → Sync)'}
+                                    title={countsHere ? undefined : 'Private match: not counted in your wins and losses (Settings → Games & logging)'}
                                   >
                                     <span className="m-result">
                                       {m.result === 'win' ? (

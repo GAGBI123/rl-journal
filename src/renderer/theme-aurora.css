@@ -933,3 +933,26 @@
 [data-theme='aurora'] .recap-facts button.fact:hover {
   border-color: var(--glass-border-hover);
 }
+
+/* ------------------------------------------------------------- settings tabs (1.9) */
+
+[data-theme='aurora'] .settings-tabs {
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  border-color: var(--glass-border);
+  border-radius: 16px;
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+[data-theme='aurora'] .settings-tab {
+  border-radius: 11px;
+}
+
+[data-theme='aurora'] .settings-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='aurora'] .settings-tab.on {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 34%, var(--panel-3)), color-mix(in srgb, var(--violet) 22%, var(--panel-3)));
+  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--blue) 80%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--blue) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}

@@ -3592,3 +3592,64 @@ td.muted .m-result .m-score {
   font-size: 11.5px;
   color: var(--text-2);
 }
+
+/* ------------------------------------------------------------- settings tabs (1.9) */
+/* Settings work like a game's settings menu: tabs across the top, one group of settings at a time. */
+
+.settings-tabs {
+  position: sticky;
+  top: -26px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  margin: 0 0 26px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.7);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.settings-tab {
+  flex: 1 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.settings-tab.on {
+  color: var(--text);
+  background: var(--panel-3);
+  box-shadow: inset 0 -2px 0 var(--blue), inset 0 0 0 1px var(--border-strong);
+}
+
+.settings-tab.on svg {
+  color: var(--blue-text);
+}
+
+.settings-tab:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+.settings-panel {
+  animation: fade-in 0.18s ease;
+}

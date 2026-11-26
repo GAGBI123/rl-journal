@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BarChart3, CalendarDays, CheckCircle2, Dumbbell, Gamepad2, Plus, Star } from 'lucide-react';
+import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Dumbbell, Gamepad2, Plus, Star } from 'lucide-react';
 import { useStore } from '../store';
 import { daySummary, buildContext, statById, type Scope } from '../lib/stats';
 import { currentDate, dayNumber, seasonEndDate } from '../lib/journal';
@@ -160,7 +160,11 @@ export function HomePage() {
   const data = useStore((s) => s.data);
   const [creating, setCreating] = useState(false);
   const active = data.seasons.filter((s) => s.status === 'active').sort((a, b) => b.number - a.number);
-  const closed = data.seasons.filter((s) => s.status === 'closed').sort((a, b) => b.number - a.number);
+  const closed = data.seasons.filter((s) => s.status === 'closed').sort((a, b) => b.number - a.number || (a.startDate < b.startDate ? 1 : -1));
+  // Two rows of cards next to the current season; the rest one click away.
+  const [showAll, setShowAll] = useState(false);
+  const firstRows = Math.max(2, 6 - active.length);
+  const shownClosed = showAll || closed.length <= firstRows + 1 ? closed : closed.slice(0, firstRows);
 
   if (!data.seasons.length) {
     return (
@@ -198,30 +202,32 @@ export function HomePage() {
         </div>
       </div>
 
-      {active.length > 0 && (
-        <div className="grid auto-lg">
-          {active.map((s) => (
-            <SeasonCard key={s.id} season={s} />
-          ))}
+      {/* Completed seasons sit right next to the current one (newest first), not below the stats. */}
+      <div className="grid auto-lg">
+        {active.map((s) => (
+          <SeasonCard key={s.id} season={s} />
+        ))}
+        {shownClosed.map((s) => (
+          <SeasonCard key={s.id} season={s} />
+        ))}
+      </div>
+      {closed.length > shownClosed.length || showAll ? (
+        <div className="row" style={{ justifyContent: 'center', marginTop: 12 }}>
+          <button className="btn ghost small" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? (
+              <>
+                <ChevronUp size={15} /> Show fewer completed seasons
+              </>
+            ) : (
+              <>
+                <ChevronDown size={15} /> Show all {closed.length} completed seasons
+              </>
+            )}
+          </button>
         </div>
-      )}
+      ) : null}
 
       <KeyStats />
-
-      {closed.length > 0 && (
-        <>
-          <div className="section-title">
-            <h2>
-              <CheckCircle2 size={14} /> Completed seasons
-            </h2>
-          </div>
-          <div className="grid auto-lg">
-            {closed.map((s) => (
-              <SeasonCard key={s.id} season={s} />
-            ))}
-          </div>
-        </>
-      )}
       {creating && <NewSeasonModal onClose={() => setCreating(false)} />}
     </div>
   );

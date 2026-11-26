@@ -120,7 +120,7 @@ function UpdatePill() {
   if (update.state === 'available' || update.state === 'downloaded') {
     return (
       <div className="update-banner" title={update.state === 'downloaded' ? 'Restart to finish updating' : 'A new version is available'}>
-        <span className="clickable" onClick={() => navigate({ name: 'settings' })}>
+        <span className="clickable" onClick={() => navigate({ name: 'settings', tab: 'app' })}>
           Update {update.version}
         </span>
         <button onClick={() => window.rlj.installUpdate()}>{update.state === 'downloaded' ? 'Restart' : 'Install'}</button>

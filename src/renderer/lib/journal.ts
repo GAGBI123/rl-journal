@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dayMatchesSort: 'recent',
   endDayManually: true,
   theme: 'aurora',
+  timeFormat: 'days',
   settingsRev: 2,
 };
 
@@ -149,6 +150,7 @@ export function normalizeData(raw: any): AppData {
   data.settings.settingsRev = Math.max(rev, SETTINGS_REV);
   if (!THEMES.has(data.settings.theme)) data.settings.theme = DEFAULT_SETTINGS.theme;
   if (!MATCH_SORTS.has(data.settings.dayMatchesSort)) data.settings.dayMatchesSort = DEFAULT_SETTINGS.dayMatchesSort;
+  if (data.settings.timeFormat !== 'hours') data.settings.timeFormat = 'days';
   const colors = data.settings.customColors;
   if (colors && typeof colors === 'object') {
     const clean = Object.fromEntries(Object.entries(colors).filter(([k, v]) => COLOR_KEYS.has(k) && typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)));

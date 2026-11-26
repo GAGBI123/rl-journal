@@ -253,11 +253,14 @@ export interface Settings {
   theme: ThemeId;
   /** The user's own colors on top of the look (CSS hex colors). */
   customColors?: CustomColors;
+  /** How long times are shown: 'days' = 1d 4h 20m (default), 'hours' = 28h 20m (never in days). */
+  timeFormat: TimeFormat;
   /** One-time settings changes already applied to this file (see normalizeData). */
   settingsRev?: number;
 }
 
 export type ThemeId = 'aurora' | 'classic';
+export type TimeFormat = 'days' | 'hours';
 
 /** Orders for the tracked matches on the day page (newest first within each group). */
 export type MatchSort = 'recent' | 'oldest' | 'mode' | 'account' | 'result' | 'points';

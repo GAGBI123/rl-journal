@@ -183,7 +183,7 @@ function startUpdates() {
     // With automatic updates off, say once per version that an update is waiting.
     if (u.state === 'available' && announced !== u.version) {
       announced = u.version;
-      toast({ kind: 'info', title: `Update ${u.version} available`, body: 'Open Settings to install it with one click.', view: { name: 'settings' } });
+      toast({ kind: 'info', title: `Update ${u.version} available`, body: 'Open Settings to install it with one click.', view: { name: 'settings', tab: 'app' } });
       if (data.settings.systemNotifications) window.rlj.notify({ title: 'RL Journal update available', body: `Version ${u.version} is ready to install.` });
     }
   });

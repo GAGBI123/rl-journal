@@ -2,7 +2,10 @@ import { create } from 'zustand';
 import type { AppData, LiveStatus, LocalPlayer, UpdateStatus } from '../shared/model';
 import type { TimerState } from '../shared/timer';
 import { createDefaultData, normalizeData } from './lib/journal';
-import { uid } from './lib/format';
+import { setTimeFormat, uid } from './lib/format';
+
+/** Tabs of the Settings page. */
+export type SettingsTab = 'appearance' | 'sections' | 'games' | 'timer' | 'app' | 'data';
 
 export type View =
   | { name: 'home' }
@@ -11,7 +14,7 @@ export type View =
   | { name: 'stats'; seasonId?: string }
   | { name: 'routines' }
   | { name: 'accounts' }
-  | { name: 'settings' }
+  | { name: 'settings'; tab?: SettingsTab }
   | { name: 'about' };
 
 export interface Toast {
@@ -97,6 +100,11 @@ export const useStore = create<State>((set, get) => ({
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
+
+// Durations everywhere follow Settings → Appearance → Times. Runs before React re-renders.
+useStore.subscribe((s, prev) => {
+  if (s.data.settings.timeFormat !== prev.data.settings.timeFormat) setTimeFormat(s.data.settings.timeFormat);
+});
 
 export async function loadInitialData() {
   const raw = await window.rlj.loadData();

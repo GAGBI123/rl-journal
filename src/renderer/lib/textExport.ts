@@ -1,9 +1,10 @@
 // Seasons as plain text files for Notepad: one file per season, one block per day, the season's totals at the end.
+// Days go by number ("day 12"), not date, and training not done that day stays in as "x", like the Notepad template.
 import type { AppData, Day, Entry, Season } from '../../shared/model';
 import { HONOR_DUEL_KEY } from '../../shared/playlists';
-import { formatDate, todayISO } from './dates';
+import { diffDays, formatDate, todayISO } from './dates';
 import { fmtMinutes, fmtNum, fmtPct } from './format';
-import { dayNumber, inRecord, seasonLabel, sortedSections } from './journal';
+import { dayNumber, inRecord, seasonLabel, sectionActivities, sortedSections } from './journal';
 import { rankedBySize, seasonRecap, winRate, type ModeTotal } from './recap';
 
 const LINE = '-'.repeat(100);
@@ -26,9 +27,12 @@ function results(e: Entry, show: boolean, counts: boolean) {
   return ` (${wl(e.wins ?? 0, e.losses ?? 0)})`;
 }
 
-/** One day as text: what was done, the training total, then ranked 1vs1 / 2vs2 / 3vs3 games. */
+/**
+ * One day as text: every training activity (x for the ones not done that day, like the Notepad template),
+ * other things logged, the training total, then ranked 1vs1 / 2vs2 / 3vs3 games (x when none).
+ */
 export function dayText(data: AppData, season: Season, day: Day): string[] {
-  const out = [LINE, `day ${dayNumber(season, day)} (${date(day.date)})`, '---------', '-------------------------------------'];
+  const out = [LINE, `day ${dayNumber(season, day)}`, '---------', '-------------------------------------'];
   const showRecord = !day.hideRecord;
   const acts = new Map(data.activities.map((a) => [a.id, a]));
   const lines: string[] = [];
@@ -39,9 +43,20 @@ export function dayText(data: AppData, season: Season, day: Day): string[] {
     const entries = day.entries
       .filter((e) => acts.get(e.activityId)?.sectionId === section.id)
       .sort((a, b) => (acts.get(a.activityId)?.order ?? 0) - (acts.get(b.activityId)?.order ?? 0));
+    if (section.kind === 'training') {
+      for (const a of sectionActivities(data, section.id)) {
+        const done = entries.filter((e) => e.activityId === a.id);
+        if (!done.length) lines.push(`${a.name} : x`);
+        for (const e of done) {
+          if (e.measure === 'time') training += e.minutes ?? 0;
+          const value = e.measure === 'time' ? minutes(e.minutes ?? 0) : fmtNum(e.amount ?? 0, 2);
+          lines.push(`${a.name} : ${value}${noteText(e)}`);
+        }
+      }
+      continue;
+    }
     for (const e of entries) {
       const a = acts.get(e.activityId)!;
-      if (e.measure === 'time' && section.kind === 'training') training += e.minutes ?? 0;
       const size = a.key ? RANKED_SIZES[a.key] : undefined;
       if (size && e.measure === 'amount') {
         const r = ranked.get(size) ?? { games: 0, wins: 0, losses: 0, known: false };
@@ -56,24 +71,28 @@ export function dayText(data: AppData, season: Season, day: Day): string[] {
       const games = section.kind === 'games' && e.measure === 'amount';
       const value = e.measure === 'time' ? minutes(e.minutes ?? 0) : fmtNum(e.amount ?? 0, 2);
       const label = games && !/match|duel/i.test(a.name) ? `${a.name} matches` : a.name;
-      const note = e.note?.trim() ? ` - ${e.note.trim().replace(/\s*\n\s*/g, '; ')}` : '';
-      lines.push(`${label} : ${value}${results(e, showRecord, inRecord(data, a.id))}${note}`);
+      lines.push(`${label} : ${value}${results(e, showRecord, inRecord(data, a.id))}${noteText(e)}`);
     }
   }
-  if (!day.entries.length) out.push('nothing logged (rest day)');
   for (const l of lines) out.push(l, '');
   if (day.note?.trim()) {
     const [first, ...rest] = day.note.trim().split(/\r?\n/);
     out.push(`notes: ${first}`, ...rest.map((l) => `       ${l}`), '');
   }
-  if (day.entries.length) {
-    out.push(`total training time : ${minutes(training)}${training >= 60 ? ` (${fmtMinutes(training)})` : ''}`, '');
-    for (const size of ['1vs1', '2vs2', '3vs3']) {
-      const r = ranked.get(size);
-      out.push(`${size} matches: ${r ? fmtNum(r.games) : 0}${r && r.known && showRecord ? ` (${wl(r.wins, r.losses)})` : ''}`);
-    }
+  out.push(`total training time : ${training > 0 ? `${minutes(training)}${training >= 60 ? ` (${fmtMinutes(training)})` : ''}` : 'x'}`, '');
+  for (const size of ['1vs1', '2vs2', '3vs3']) {
+    const r = ranked.get(size);
+    out.push(`${size} matches: ${r?.games ? fmtNum(r.games) : 'x'}${r?.games && r.known && showRecord ? ` (${wl(r.wins, r.losses)})` : ''}`);
   }
   return out;
+}
+
+const noteText = (e: Entry) => (e.note?.trim() ? ` - ${e.note.trim().replace(/\s*\n\s*/g, '; ')}` : '');
+
+/** "day 12" for a date inside the season (the text file names days by number, not date). */
+function dayRef(season: Season, iso: string) {
+  const n = diffDays(season.startDate, iso) + 1;
+  return n >= 1 && n <= season.days.length ? `day ${n}` : date(iso);
 }
 
 function modeLine(m: ModeTotal) {
@@ -98,11 +117,11 @@ export function recapText(data: AppData, season: Season, today = todayISO()): st
     out.push('');
   }
   out.push(`All games (no honor duels): ${fmtNum(r.games)}${r.record.wins + r.record.losses ? ` (${wl(r.record.wins, r.record.losses)}, ${fmtPct(winRate(r.record))} won)` : ''}`);
-  if (r.mostGamesDay) out.push(`Most games in a day: ${fmtNum(r.mostGamesDay.value)} on day ${r.mostGamesDay.number} (${date(r.mostGamesDay.day.date)})`);
+  if (r.mostGamesDay) out.push(`Most games in a day: ${fmtNum(r.mostGamesDay.value)} on day ${r.mostGamesDay.number}`);
   out.push('');
   out.push(`Total training time: ${fmtMinutes(r.training)} (${minutes(r.training)})`);
   out.push(`Average training: ${fmtMinutes(r.training / Math.max(1, r.days))} a day, ${fmtMinutes(r.training / Math.max(1, r.trainingDays))} on days you trained`);
-  if (r.bestTrainingDay) out.push(`Best training day: ${fmtMinutes(r.bestTrainingDay.value)} on day ${r.bestTrainingDay.number} (${date(r.bestTrainingDay.day.date)})`);
+  if (r.bestTrainingDay) out.push(`Best training day: ${fmtMinutes(r.bestTrainingDay.value)} on day ${r.bestTrainingDay.number}`);
   if (r.topTraining.length) {
     out.push('Most trained:');
     r.topTraining.slice(0, 8).forEach((t, i) => out.push(`  ${i + 1}. ${t.name}: ${fmtMinutes(t.minutes)}`));
@@ -122,7 +141,7 @@ export function recapText(data: AppData, season: Season, today = todayISO()): st
     out.push(`Per game: ${per(t.goals)} goals, ${per(t.assists)} assists, ${per(t.saves)} saves, ${per(t.shots)} shots`);
     if (t.shots) out.push(`Shooting: ${fmtPct(t.goals / t.shots, 1)} (${t.goals} goals from ${t.shots} shots)`);
     if (t.overtime) out.push(`Overtime games: ${t.overtime} (${t.overtimeWins} won)`);
-    if (t.best) out.push(`Best match: ${fmtNum(t.best.score)} points, ${t.best.mode} on ${date(t.best.date)} (${t.best.goals}G ${t.best.assists}A ${t.best.saves}S)`);
+    if (t.best) out.push(`Best match: ${fmtNum(t.best.score)} points, ${t.best.mode} on ${dayRef(season, t.best.date)} (${t.best.goals}G ${t.best.assists}A ${t.best.saves}S)`);
     for (const a of r.accounts) out.push(`On ${a.label}: ${fmtNum(a.games)} games${a.wins + a.losses ? ` (${wl(a.wins, a.losses)})` : ''}`);
   }
   out.push(EQUALS);

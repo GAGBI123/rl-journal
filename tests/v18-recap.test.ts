@@ -101,13 +101,16 @@ describe('text export', () => {
     const { data, season } = setup();
     const lines = dayText(data, season, season.days[4]);
     expect(lines[0]).toMatch(/^-{100}$/);
-    expect(lines[1]).toMatch(/^day 5 \(/);
+    expect(lines[1]).toBe('day 5'); // no date: days go by number
     expect(lines.slice(2, 4)).toEqual(['---------', '-------------------------------------']);
     expect(lines).toContain('Freeplay : 10 min');
+    // Training not done that day stays in with an x.
+    expect(lines).toContain('Aerial control : x');
+    expect(lines).toContain('Shooting pack : x');
     expect(lines).toContain('notes: Good session');
     expect(lines).toContain('       felt fast');
     expect(lines).toContain('total training time : 10 min');
-    expect(lines.slice(-3)).toEqual(['1vs1 matches: 0', '2vs2 matches: 4 (3W 1L)', '3vs3 matches: 0']);
+    expect(lines.slice(-3)).toEqual(['1vs1 matches: x', '2vs2 matches: 4 (3W 1L)', '3vs3 matches: x']);
   });
 
   it('lists games other than ranked 1s/2s/3s as their own lines, with descriptions', () => {
@@ -121,7 +124,10 @@ describe('text export', () => {
     expect(lines).toContain('total training time : 15 min');
     expect(lines).toContain('2vs2 matches: 1 (1W 0L)');
     expect(dayText(data, season, season.days[0])).toContain('Aerial control : 20 min - flip resets');
-    expect(dayText(data, season, season.days[3])).toContain('nothing logged (rest day)');
+    const rest = dayText(data, season, season.days[3]);
+    for (const l of ['Freeplay : x', 'Aerial control : x', 'Shooting pack : x', 'total training time : x', '1vs1 matches: x', '2vs2 matches: x', '3vs3 matches: x']) {
+      expect(rest).toContain(l);
+    }
   });
 
   it('hides wins and losses on days that hide their record', () => {
@@ -135,12 +141,14 @@ describe('text export', () => {
     const text = seasonText(data, season, '2026-12-01');
     expect(text.split('\r\n')[0]).toBe('RL Journal - Season 21 · Road to Champ');
     expect(text).not.toMatch(/[^\r]\n/);
-    expect(text.match(/^day \d+ /gm)).toHaveLength(10);
+    expect(text.match(/^day \d+\r$/gm)).toHaveLength(10);
     expect(text).toContain('Season 21 · Road to Champ (end of season)');
     expect(text).toContain('Total ranked games in 10 days: 7');
     expect(text).toContain('2vs2: 6 (4W 2L, 67% won)');
     expect(text).toContain('Total training time: 2h 45m (165 min)');
     expect(text).toContain('Longest streak: 3 days in a row');
+    expect(text).toContain('Most games in a day: 4 on day 5\r\n');
+    expect(text).toMatch(/Best match: .* on day \d+ \(/);
   });
 
   it('names one file per season, never twice the same', () => {
@@ -155,7 +163,7 @@ describe('text export', () => {
     ]);
     // A season still going only lists the days up to today.
     const live = allSeasonTexts(data, '2026-10-12')[1].content;
-    expect(live.match(/^day \d+ /gm)).toHaveLength(2);
+    expect(live.match(/^day \d+\r$/gm)).toHaveLength(2);
     expect(live).toContain('(season so far)');
   });
 });

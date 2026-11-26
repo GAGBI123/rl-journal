@@ -1,6 +1,9 @@
-// 1.8.1: on a Wayland desktop RL Journal restarts itself under XWayland so the timer overlay can stay above the game.
+// 1.9: Linux restarts under XWayland (overlay above the game), times in hours only, text export days by number with x.
 import { describe, expect, it } from 'vitest';
 import { onWayland, xwaylandRelaunchPlan } from '../src/main/linux';
+import { fmtMinutes, setTimeFormat } from '../src/renderer/lib/format';
+import { createDefaultData, createSeason, normalizeData } from '../src/renderer/lib/journal';
+import { recapText, seasonText } from '../src/renderer/lib/textExport';
 
 const exe = '/tmp/.mount_rlj/rl-journal';
 const wayland = { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' };
@@ -54,5 +57,47 @@ describe('XWayland restart', () => {
     expect(xwaylandRelaunchPlan(wayland, [exe, '--ozone-platform-hint=auto'], 'wayland', exe)).toBeNull();
     // Electron already chose X11 (e.g. no Wayland socket).
     expect(xwaylandRelaunchPlan(wayland, [exe], 'x11', exe)).toBeNull();
+  });
+});
+
+describe('time format setting', () => {
+  it('shows days by default and only hours and minutes when asked', () => {
+    expect(fmtMinutes(1700)).toBe('1d 4h 20m');
+    expect(fmtMinutes(1700, false)).toBe('28h 20m');
+    expect(fmtMinutes(2880, false)).toBe('48h');
+    expect(fmtMinutes(45, false)).toBe('45m');
+    setTimeFormat('hours');
+    try {
+      expect(fmtMinutes(1700)).toBe('28h 20m');
+      expect(fmtMinutes(-1500)).toBe('-25h');
+    } finally {
+      setTimeFormat('days');
+    }
+    expect(fmtMinutes(1700)).toBe('1d 4h 20m');
+  });
+
+  it('is days in new and older journals, and keeps hours once chosen', () => {
+    expect(createDefaultData().settings.timeFormat).toBe('days');
+    const old = createDefaultData() as any;
+    delete old.settings.timeFormat;
+    expect(normalizeData(old).settings.timeFormat).toBe('days');
+    old.settings.timeFormat = 'weeks';
+    expect(normalizeData(old).settings.timeFormat).toBe('days');
+    old.settings.timeFormat = 'hours';
+    expect(normalizeData(old).settings.timeFormat).toBe('hours');
+  });
+
+  it('applies to the exported text files too', () => {
+    const data = createDefaultData();
+    const season = createSeason(data, 30, '2026-01-01', 3);
+    season.days[0].entries.push({ id: 'e1', activityId: 'act-freeplay', measure: 'time', minutes: 1700, createdAt: '2026-01-01T10:00:00Z' });
+    expect(seasonText(data, season, '2026-01-03')).toContain('total training time : 1,700 min (1d 4h 20m)');
+    setTimeFormat('hours');
+    try {
+      expect(seasonText(data, season, '2026-01-03')).toContain('total training time : 1,700 min (28h 20m)');
+      expect(recapText(data, season, '2026-01-03')).toContain('Total training time: 28h 20m (1,700 min)');
+    } finally {
+      setTimeFormat('days');
+    }
   });
 });

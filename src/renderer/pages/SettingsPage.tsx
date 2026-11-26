@@ -1,6 +1,29 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Clock, Download, FileText, Folder, FolderInput, FolderOpen, FolderPlus, GripVertical, Hash, Plus, RefreshCw, Timer, Trash2, Upload } from 'lucide-react';
-import { useStore } from '../store';
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Database,
+  Download,
+  FileText,
+  Folder,
+  FolderInput,
+  FolderOpen,
+  FolderPlus,
+  Gamepad2,
+  GripVertical,
+  Hash,
+  Layers,
+  MonitorCog,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Timer,
+  Trash2,
+  Upload,
+  type LucideIcon,
+} from 'lucide-react';
+import { useStore, type SettingsTab } from '../store';
 import { confirmDialog, Field, Modal, Segmented, Toggle } from '../components/ui';
 import {
   activityToSection,
@@ -22,7 +45,7 @@ import {
 import { relativeTime, todayISO } from '../lib/dates';
 import { ShortcutInput } from '../components/ShortcutInput';
 import { AppearanceSettings } from '../components/Appearance';
-import { uid } from '../lib/format';
+import { fmtMinutes, uid } from '../lib/format';
 import { allSeasonTexts } from '../lib/textExport';
 import type { Measure, Section } from '../../shared/model';
 
@@ -499,12 +522,72 @@ function UpdatesCard({ version }: { version: string }) {
   );
 }
 
+const TABS: { id: SettingsTab; label: string; icon: LucideIcon; desc: string }[] = [
+  { id: 'appearance', label: 'Appearance', icon: Sparkles, desc: 'The look, your colors, the app icon and how times are shown.' },
+  { id: 'sections', label: 'Sections & activities', icon: Layers, desc: 'What you train and play, in the order you want it.' },
+  { id: 'games', label: 'Games & logging', icon: Gamepad2, desc: 'How your games are logged: days, wins and losses, private matches and accounts.' },
+  { id: 'timer', label: 'Timer & overlay', icon: Timer, desc: 'The training timer, the overlay over the game and its shortcuts.' },
+  { id: 'app', label: 'App & updates', icon: MonitorCog, desc: 'Notifications, starting with your computer and updates.' },
+  { id: 'data', label: 'Your data', icon: Database, desc: 'Backups, seasons as text files and where your journal is kept.' },
+];
+
+/** The tab last open, so Settings opens where you left it (like a game's settings menu). */
+let lastTab: SettingsTab = 'appearance';
+
+function TimeFormatSetting() {
+  const format = useStore((s) => s.data.settings.timeFormat);
+  const mutate = useStore((s) => s.mutate);
+  const sample = 1700; // 1d 4h 20m
+  return (
+    <>
+      <div className="section-title">
+        <h2>
+          <Clock size={15} /> Times
+        </h2>
+      </div>
+      <div className="card">
+        <div className="row between" style={{ alignItems: 'flex-start', gap: 16 }}>
+          <div>
+            <div style={{ fontWeight: 500 }}>Show long times in days</div>
+            <div className="muted small">
+              {format === 'hours'
+                ? `Times stay in hours and minutes, however long: ${fmtMinutes(sample, false)}.`
+                : `A day or more of training is shown in days, hours and minutes: ${fmtMinutes(sample, true)}.`}{' '}
+              Everywhere in the app and in exported text files.
+            </div>
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            <Segmented
+              value={format}
+              onChange={(v) => mutate((d) => void (d.settings.timeFormat = v))}
+              options={[
+                { value: 'days', label: 'Days, hours, minutes' },
+                { value: 'hours', label: 'Hours and minutes' },
+              ]}
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export function SettingsPage() {
   const data = useStore((s) => s.data);
   const settings = data.settings;
   const mutate = useStore((s) => s.mutate);
   const replaceData = useStore((s) => s.replaceData);
   const toast = useStore((s) => s.toast);
+  const view = useStore((s) => s.view);
+  const askedTab = view.name === 'settings' ? view.tab : undefined;
+  const [tab, setTabState] = useState<SettingsTab>(askedTab ?? lastTab);
+  const setTab = (t: SettingsTab) => {
+    lastTab = t;
+    setTabState(t);
+  };
+  useEffect(() => {
+    if (askedTab) setTab(askedTab);
+  }, [askedTab]);
   const [version, setVersion] = useState('');
   const isLinux = window.rlj.platform === 'linux';
   const [folder, setFolder] = useState('');
@@ -512,6 +595,16 @@ export function SettingsPage() {
     window.rlj.version().then(setVersion);
     window.rlj.dataFolder().then(setFolder);
   }, []);
+  const current = TABS.find((t) => t.id === tab) ?? TABS[0];
+  // Arrow keys move between tabs, like a game menu.
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const i = TABS.findIndex((t) => t.id === tab);
+    const next = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    setTab(next.id);
+    document.getElementById(`settings-tab-${next.id}`)?.focus();
+  };
 
   const set = <K extends keyof typeof settings>(k: K, v: (typeof settings)[K]) =>
     mutate((d) => {
@@ -553,188 +646,253 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="page">
+    <div className="page settings-page">
       <div className="page-header">
         <div>
           <h1>Settings</h1>
-          <div className="subtitle">Look and colors, sections, sync behaviour and your data.</div>
+          <div className="subtitle">{current.desc}</div>
         </div>
       </div>
 
-      <AppearanceSettings />
-
-      <SectionsManager />
-
-      <div className="section-title">
-        <h2>Sync & notifications</h2>
-      </div>
-      <div className="card">
-        <Toggle
-          title="End days yourself"
-          desc={
-            settings.endDayManually
-              ? 'Games are logged to the current day until you press End day (in the sidebar or on the day), so a session that goes past midnight stays on the day it started. A day left open for a whole extra day ends by itself.'
-              : 'Off: a new day starts at midnight.'
-          }
-          on={settings.endDayManually}
-          onChange={(v) =>
-            mutate((d) => {
-              d.settings.endDayManually = v;
-              // Start from today when it's switched on.
-              if (v) d.settings.openDay = todayISO();
-              delete d.settings.endedDay;
-            })
-          }
-        />
-        <Toggle title="Desktop notifications" desc="Show a notification when a game is logged automatically." on={settings.systemNotifications} onChange={(v) => set('systemNotifications', v)} />
-        <Toggle title="Keep running in the tray when closed" desc="Needed for automatic logging while the window is closed." on={settings.closeToTray} onChange={(v) => set('closeToTray', v)} />
-        <Toggle
-          title={isLinux ? 'Start when I log in' : 'Start with Windows'}
-          desc="Starts minimized to the tray so games keep being logged."
-          on={settings.startWithWindows}
-          onChange={(v) => set('startWithWindows', v)}
-        />
-        <Toggle
-          title="Track wins and losses for auto-logged games"
-          desc="Ranked, casual and all other modes. Off: only the number of games is logged."
-          on={settings.trackResultsGames}
-          onChange={(v) => set('trackResultsGames', v)}
-        />
-        <Toggle
-          title="Track wins and losses for auto-logged honor duels"
-          desc="Off: honor duels are only counted."
-          on={settings.trackResultsHonorDuel}
-          onChange={(v) => set('trackResultsHonorDuel', v)}
-        />
-        <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start', gap: 16 }}>
-          <div>
-            <div style={{ fontWeight: 500 }}>Private matches</div>
-            <div className="muted small">
-              {settings.ignorePrivateMatches
-                ? "Private and third-party matches aren't logged at all."
-                : settings.privateInRecord
-                  ? 'Logged like other games, wins and losses included.'
-                  : 'Logged as games, but left out of your wins, losses and win rates (also the ones already logged).'}{' '}
-              Freeplay, training, workshop and offline games are never logged.
-            </div>
-          </div>
-          <div style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-            <Segmented
-              value={settings.ignorePrivateMatches ? 'skip' : settings.privateInRecord ? 'record' : 'games'}
-              onChange={(v) =>
-                mutate((d) => {
-                  d.settings.ignorePrivateMatches = v === 'skip';
-                  d.settings.privateInRecord = v !== 'games';
-                })
-              }
-              options={[
-                { value: 'record', label: 'In record' },
-                { value: 'games', label: 'Not in record' },
-                { value: 'skip', label: "Don't log" },
-              ]}
-            />
-          </div>
-        </div>
-        <Toggle
-          title="Keep each account's games apart"
-          desc={
-            settings.splitAccounts
-              ? "Games you play on different accounts get their own entry on the day (e.g. Ranked 2s · Main and Ranked 2s · Alt). Merge them on the day page to see them together; you can still open them to see each account's games."
-              : "Off: games of the same mode go into one entry, whatever account they're on. Open it on the day page to see each account's games."
-          }
-          on={settings.splitAccounts}
-          onChange={(v) => set('splitAccounts', v)}
-        />
+      <div className="settings-tabs" role="tablist" aria-label="Settings" onKeyDown={onTabKey}>
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const on = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              id={`settings-tab-${t.id}`}
+              role="tab"
+              aria-selected={on}
+              aria-controls="settings-panel"
+              tabIndex={on ? 0 : -1}
+              className={`settings-tab ${on ? 'on' : ''}`}
+              onClick={() => setTab(t.id)}
+            >
+              <Icon size={16} /> {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="section-title">
-        <h2>Timer & in-game overlay</h2>
-      </div>
-      <div className="card">
-        <div className="muted small" style={{ marginBottom: 6 }}>
-          <Timer size={13} style={{ verticalAlign: -2 }} /> On any day, pick what you're doing, then click <b>Timer</b> (counts down the time you enter and logs it when it ends) or <b>Stopwatch</b> (counts up until you stop it, then logs the time).
-        </div>
-        <Toggle
-          title="Show the timer on top of Rocket League"
-          desc="A small timer at the top of the screen while the game runs, with a pause button. Works with the game in Borderless or Windowed mode. In Fullscreen, Windows draws the game over everything else, so use Borderless."
-          on={settings.timerOverlay}
-          onChange={(v) => set('timerOverlay', v)}
-        />
-        {settings.timerOverlay && (
-          <div className="row between" style={{ padding: '10px 0' }}>
-            <div>
-              <div style={{ fontWeight: 500 }}>Overlay position</div>
-              <div className="muted small">Top of the screen the game is on.</div>
-            </div>
-            <Segmented
-              value={settings.overlayPosition}
-              onChange={(v) => set('overlayPosition', v)}
-              options={[
-                { value: 'top-left', label: 'Left' },
-                { value: 'top-center', label: 'Center' },
-                { value: 'top-right', label: 'Right' },
-              ]}
-            />
-          </div>
+      <div className="settings-panel" id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${tab}`} key={tab}>
+        {tab === 'appearance' && (
+          <>
+            <AppearanceSettings />
+            <TimeFormatSetting />
+          </>
         )}
-        <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start' }}>
-          <div style={{ paddingRight: 16 }}>
-            <div style={{ fontWeight: 500 }}>Pause / resume shortcut</div>
-            <div className="muted small">
-              The way to pause in game: the game keeps the mouse to itself, so clicks often don't reach the overlay. Only active while a timer runs.
-              Click the button and press any key or combination.
+
+        {tab === 'sections' && <SectionsManager />}
+
+        {tab === 'games' && (
+          <>
+            <div className="section-title">
+              <h2>
+                <Gamepad2 size={15} /> Games & logging
+              </h2>
             </div>
-          </div>
-          <ShortcutInput
-            value={settings.timerHotkey}
-            defaultValue={DEFAULT_SETTINGS.timerHotkey}
-            onChange={(v) => set('timerHotkey', v)}
-            other={{ value: settings.timerFinishHotkey, name: 'done' }}
-          />
-        </div>
-        <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start' }}>
-          <div style={{ paddingRight: 16 }}>
-            <div style={{ fontWeight: 500 }}>Done shortcut</div>
-            <div className="muted small">Stops the stopwatch (or ends a timer early) and logs the time so far. Also works in game.</div>
-          </div>
-          <ShortcutInput
-            value={settings.timerFinishHotkey}
-            defaultValue={DEFAULT_SETTINGS.timerFinishHotkey}
-            onChange={(v) => set('timerFinishHotkey', v)}
-            other={{ value: settings.timerHotkey, name: 'pause' }}
-          />
-        </div>
-        <Toggle title="Play a sound when a timer ends" on={settings.timerSound} onChange={(v) => set('timerSound', v)} />
+            <div className="card">
+              <Toggle
+                title="End days yourself"
+                desc={
+                  settings.endDayManually
+                    ? 'Games are logged to the current day until you press End day (in the sidebar or on the day), so a session that goes past midnight stays on the day it started. A day left open for a whole extra day ends by itself.'
+                    : 'Off: a new day starts at midnight.'
+                }
+                on={settings.endDayManually}
+                onChange={(v) =>
+                  mutate((d) => {
+                    d.settings.endDayManually = v;
+                    // Start from today when it's switched on.
+                    if (v) d.settings.openDay = todayISO();
+                    delete d.settings.endedDay;
+                  })
+                }
+              />
+              <Toggle
+                title="Track wins and losses for auto-logged games"
+                desc="Ranked, casual and all other modes. Off: only the number of games is logged."
+                on={settings.trackResultsGames}
+                onChange={(v) => set('trackResultsGames', v)}
+              />
+              <Toggle
+                title="Track wins and losses for auto-logged honor duels"
+                desc="Off: honor duels are only counted."
+                on={settings.trackResultsHonorDuel}
+                onChange={(v) => set('trackResultsHonorDuel', v)}
+              />
+              <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start', gap: 16 }}>
+                <div>
+                  <div style={{ fontWeight: 500 }}>Private matches</div>
+                  <div className="muted small">
+                    {settings.ignorePrivateMatches
+                      ? "Private and third-party matches aren't logged at all."
+                      : settings.privateInRecord
+                        ? 'Logged like other games, wins and losses included.'
+                        : 'Logged as games, but left out of your wins, losses and win rates (also the ones already logged).'}{' '}
+                    Freeplay, training, workshop and offline games are never logged.
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  <Segmented
+                    value={settings.ignorePrivateMatches ? 'skip' : settings.privateInRecord ? 'record' : 'games'}
+                    onChange={(v) =>
+                      mutate((d) => {
+                        d.settings.ignorePrivateMatches = v === 'skip';
+                        d.settings.privateInRecord = v !== 'games';
+                      })
+                    }
+                    options={[
+                      { value: 'record', label: 'In record' },
+                      { value: 'games', label: 'Not in record' },
+                      { value: 'skip', label: "Don't log" },
+                    ]}
+                  />
+                </div>
+              </div>
+              <Toggle
+                title="Keep each account's games apart"
+                desc={
+                  settings.splitAccounts
+                    ? "Games you play on different accounts get their own entry on the day (e.g. Ranked 2s · Main and Ranked 2s · Alt). Merge them on the day page to see them together; you can still open them to see each account's games."
+                    : "Off: games of the same mode go into one entry, whatever account they're on. Open it on the day page to see each account's games."
+                }
+                on={settings.splitAccounts}
+                onChange={(v) => set('splitAccounts', v)}
+              />
+            </div>
+          </>
+        )}
+
+        {tab === 'timer' && (
+          <>
+            <div className="section-title">
+              <h2>
+                <Timer size={15} /> Timer & in-game overlay
+              </h2>
+            </div>
+            <div className="card">
+              <div className="muted small" style={{ marginBottom: 6 }}>
+                <Timer size={13} style={{ verticalAlign: -2 }} /> On any day, pick what you're doing, then click <b>Timer</b> (counts down the time you enter and logs it when it ends) or <b>Stopwatch</b> (counts up until you stop it, then logs the time).
+              </div>
+              <Toggle
+                title="Show the timer on top of Rocket League"
+                desc={
+                  isLinux
+                    ? 'A small timer at the top of the screen while the game runs, with a pause button. Works with the game in Borderless and Fullscreen.'
+                    : 'A small timer at the top of the screen while the game runs, with a pause button. Works with the game in Borderless or Windowed mode. In Fullscreen, Windows draws the game over everything else, so use Borderless.'
+                }
+                on={settings.timerOverlay}
+                onChange={(v) => set('timerOverlay', v)}
+              />
+              {settings.timerOverlay && (
+                <div className="row between" style={{ padding: '10px 0' }}>
+                  <div>
+                    <div style={{ fontWeight: 500 }}>Overlay position</div>
+                    <div className="muted small">Top of the screen the game is on.</div>
+                  </div>
+                  <Segmented
+                    value={settings.overlayPosition}
+                    onChange={(v) => set('overlayPosition', v)}
+                    options={[
+                      { value: 'top-left', label: 'Left' },
+                      { value: 'top-center', label: 'Center' },
+                      { value: 'top-right', label: 'Right' },
+                    ]}
+                  />
+                </div>
+              )}
+              <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start' }}>
+                <div style={{ paddingRight: 16 }}>
+                  <div style={{ fontWeight: 500 }}>Pause / resume shortcut</div>
+                  <div className="muted small">
+                    The way to pause in game: the game keeps the mouse to itself, so clicks often don't reach the overlay. Only active while a timer runs.
+                    Click the button and press any key or combination.
+                  </div>
+                </div>
+                <ShortcutInput
+                  value={settings.timerHotkey}
+                  defaultValue={DEFAULT_SETTINGS.timerHotkey}
+                  onChange={(v) => set('timerHotkey', v)}
+                  other={{ value: settings.timerFinishHotkey, name: 'done' }}
+                />
+              </div>
+              <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start' }}>
+                <div style={{ paddingRight: 16 }}>
+                  <div style={{ fontWeight: 500 }}>Done shortcut</div>
+                  <div className="muted small">Stops the stopwatch (or ends a timer early) and logs the time so far. Also works in game.</div>
+                </div>
+                <ShortcutInput
+                  value={settings.timerFinishHotkey}
+                  defaultValue={DEFAULT_SETTINGS.timerFinishHotkey}
+                  onChange={(v) => set('timerFinishHotkey', v)}
+                  other={{ value: settings.timerHotkey, name: 'pause' }}
+                />
+              </div>
+              <Toggle title="Play a sound when a timer ends" on={settings.timerSound} onChange={(v) => set('timerSound', v)} />
+            </div>
+          </>
+        )}
+
+        {tab === 'app' && (
+          <>
+            <div className="section-title">
+              <h2>
+                <MonitorCog size={15} /> Notifications & startup
+              </h2>
+            </div>
+            <div className="card">
+              <Toggle title="Desktop notifications" desc="Show a notification when a game is logged automatically." on={settings.systemNotifications} onChange={(v) => set('systemNotifications', v)} />
+              <Toggle title="Keep running in the tray when closed" desc="Needed for automatic logging while the window is closed." on={settings.closeToTray} onChange={(v) => set('closeToTray', v)} />
+              <Toggle
+                title={isLinux ? 'Start when I log in' : 'Start with Windows'}
+                desc="Starts minimized to the tray so games keep being logged."
+                on={settings.startWithWindows}
+                onChange={(v) => set('startWithWindows', v)}
+              />
+            </div>
+
+            <div className="section-title">
+              <h2>
+                <RefreshCw size={15} /> Updates
+              </h2>
+            </div>
+            <UpdatesCard version={version} />
+          </>
+        )}
+
+        {tab === 'data' && (
+          <>
+            <div className="section-title">
+              <h2>
+                <Database size={15} /> Your data
+              </h2>
+            </div>
+            <div className="card">
+              <div className="muted small" style={{ marginBottom: 12 }}>
+                Everything is stored locally on this computer{folder ? <> in <code>{folder}</code></> : null}. A daily backup is kept for 14 days.
+                Installing an update or running the installer again never replaces your journal.
+              </div>
+              <div className="row wrap">
+                <button className="btn" onClick={exportData}>
+                  <Download size={15} /> Export backup
+                </button>
+                <button className="btn" onClick={importData}>
+                  <Upload size={15} /> Import backup
+                </button>
+                <button className="btn" onClick={exportTexts} title="One text file per season (opens in Notepad): every day, then the season's totals">
+                  <FileText size={15} /> Export seasons as text
+                </button>
+                <button className="btn ghost" onClick={() => window.rlj.openDataFolder()}>
+                  <FolderOpen size={15} /> Open data folder
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="section-title">
-        <h2>Updates</h2>
-      </div>
-      <UpdatesCard version={version} />
-
-      <div className="section-title">
-        <h2>Your data</h2>
-      </div>
-      <div className="card">
-        <div className="muted small" style={{ marginBottom: 12 }}>
-          Everything is stored locally on this computer{folder ? <> in <code>{folder}</code></> : null}. A daily backup is kept for 14 days.
-          Installing an update or running the installer again never replaces your journal.
-        </div>
-        <div className="row wrap">
-          <button className="btn" onClick={exportData}>
-            <Download size={15} /> Export backup
-          </button>
-          <button className="btn" onClick={importData}>
-            <Upload size={15} /> Import backup
-          </button>
-          <button className="btn" onClick={exportTexts} title="One text file per season (opens in Notepad): every day, then the season's totals">
-            <FileText size={15} /> Export seasons as text
-          </button>
-          <button className="btn ghost" onClick={() => window.rlj.openDataFolder()}>
-            <FolderOpen size={15} /> Open data folder
-          </button>
-        </div>
-      </div>
       <div className="muted tiny" style={{ marginTop: 24, textAlign: 'center' }}>
         RL Journal {version} · Not affiliated with Psyonix or Epic Games.
       </div>
