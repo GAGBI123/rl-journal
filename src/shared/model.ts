@@ -240,7 +240,19 @@ export interface Settings {
   lastRunVersion?: string;
   /** Rocket League season dates downloaded from the project's GitHub (newer than the ones built in). */
   rlSeasons?: RlSeasonInfo[];
+  /** The app's look: 'aurora' (1.7, default) or 'classic' (the original look). */
+  theme: ThemeId;
+  /** The user's own colors on top of the look (CSS hex colors). */
+  customColors?: CustomColors;
+  /** One-time settings changes already applied to this file (see normalizeData). */
+  settingsRev?: number;
 }
+
+export type ThemeId = 'aurora' | 'classic';
+
+/** Colors the user can change in Settings → Appearance. */
+export type ColorKey = 'accent' | 'accent2' | 'background' | 'surface' | 'text' | 'win' | 'loss';
+export type CustomColors = Partial<Record<ColorKey, string>>;
 
 /** Start (and end, when known) of an official Rocket League competitive season. */
 export interface RlSeasonInfo {
@@ -288,6 +300,11 @@ export interface LiveMatchResult {
   players: MatchPlayer[];
   /** The player controlling the game on this PC (the camera target), when known. */
   localPlayer?: { name: string; primaryId?: string; teamNum: number };
+  /**
+   * The game never got going (e.g. cancelled because a player didn't join): no touches, goals or
+   * clock time. Never logged.
+   */
+  notStarted?: boolean;
   /**
    * The player on this PC only watched this game (e.g. an Honor Duel between two others after a
    * match in the same lobby). Never logged.

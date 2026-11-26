@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   favorites: ['training.totalTime', 'games.total', 'training.dailyAvg', 'games.byMode', 'streak.current'],
   liveGameEnabled: true,
   liveGamePort: 49124,
-  ignorePrivateMatches: true,
+  ignorePrivateMatches: false,
   trackResultsGames: true,
   trackResultsHonorDuel: true,
   systemNotifications: true,
@@ -40,7 +40,14 @@ export const DEFAULT_SETTINGS: Settings = {
   timerSound: true,
   dayMatchesOpen: true,
   endDayManually: true,
+  theme: 'aurora',
+  settingsRev: 1,
 };
+
+/** Latest one-time settings change (see normalizeData). */
+const SETTINGS_REV = 1;
+const THEMES = new Set(['aurora', 'classic']);
+const COLOR_KEYS = new Set(['accent', 'accent2', 'background', 'surface', 'text', 'win', 'loss']);
 
 /** Settings keys from older versions that no longer exist. */
 const REMOVED_SETTINGS = ['trackerPollMinutes', 'trackerBaseUrl', 'countCasualAsRanked'];
@@ -118,6 +125,17 @@ export function normalizeData(raw: any): AppData {
     settings: { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) },
   };
   for (const k of REMOVED_SETTINGS) delete (data.settings as any)[k];
+  // 1.7: private matches are logged unless the user turns that off (they were ignored by default before).
+  const rev = typeof raw.settings?.settingsRev === 'number' ? raw.settings.settingsRev : 0;
+  if (rev < 1) data.settings.ignorePrivateMatches = false;
+  data.settings.settingsRev = Math.max(rev, SETTINGS_REV);
+  if (!THEMES.has(data.settings.theme)) data.settings.theme = DEFAULT_SETTINGS.theme;
+  const colors = data.settings.customColors;
+  if (colors && typeof colors === 'object') {
+    const clean = Object.fromEntries(Object.entries(colors).filter(([k, v]) => COLOR_KEYS.has(k) && typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)));
+    if (Object.keys(clean).length) data.settings.customColors = clean;
+    else delete data.settings.customColors;
+  } else delete data.settings.customColors;
   data.settings.favorites = (data.settings.favorites ?? []).filter((f) => typeof f === 'string' && !f.startsWith('mmr:'));
 
   for (const s of data.seasons) {
@@ -814,6 +832,38 @@ export function moveEntry(
   }
   trimRoutineLogs(src, entry.activityId, entry.measure);
   return target;
+}
+
+/**
+ * Delete one tracked game (e.g. a game that wasn't yours or was cancelled). It's taken off its
+ * entry too: one game less, and its win or loss. An entry left with no games is removed.
+ */
+export function deleteMatch(data: AppData, matchId: string): boolean {
+  const match = data.matches.find((m) => m.id === matchId);
+  if (!match) return false;
+  data.matches = data.matches.filter((m) => m !== match);
+  const day = findDay(data, match.seasonId, match.dayId);
+  const entry = day?.entries.find((e) => e.id === match.entryId);
+  if (!day || !entry || entry.measure !== 'amount') return true;
+  const amount = Math.max(0, (entry.amount ?? 0) - 1);
+  if (amount <= 0) {
+    day.entries = day.entries.filter((e) => e !== entry);
+  } else {
+    entry.amount = amount;
+    if (entry.wins !== undefined || entry.losses !== undefined) {
+      let wins = entry.wins ?? 0;
+      let losses = entry.losses ?? 0;
+      if (match.result === 'win' && wins > 0) wins--;
+      else if (match.result === 'loss' && losses > 0) losses--;
+      // Never more results than games.
+      losses = Math.min(losses, amount);
+      wins = Math.min(wins, amount - losses);
+      entry.wins = wins;
+      entry.losses = losses;
+    }
+  }
+  trimRoutineLogs(day, entry.activityId, 'amount');
+  return true;
 }
 
 /** After work left a day, its routine items keep only what the day still has (and open again if that's not enough). */

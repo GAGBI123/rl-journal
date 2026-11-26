@@ -16,6 +16,12 @@ interface CurrentMatch {
   /** How often each player was the camera target during live play (= the player on this PC). */
   targetVotes: Map<string, { name: string; teamNum: number; votes: number }>;
   fallbackGoals: Record<number, number>;
+  /** Ball touches reported with BallHit events. */
+  ballHits: number;
+  /** The game clock: highest and last value seen, and whether it ever ran down (it doesn't before kickoff). */
+  clockMax?: number;
+  clockLast?: number;
+  clockMoved: boolean;
 }
 
 export interface TrackerEvents {
@@ -106,6 +112,8 @@ export class MatchTracker {
       isReplay: false,
       targetVotes: new Map(),
       fallbackGoals: {},
+      ballHits: 0,
+      clockMoved: false,
     };
     this.events.onMatchState?.(true);
     return this.current;
@@ -129,6 +137,16 @@ export class MatchTracker {
       }
       case 'ReplayCreated': {
         this.ensure(guid).isReplay = true;
+        return null;
+      }
+      case 'BallHit': {
+        this.ensure(guid).ballHits++;
+        return null;
+      }
+      case 'ClockUpdatedSeconds': {
+        const m = this.ensure(guid);
+        this.clock(m, data?.TimeSeconds);
+        if (data?.bOvertime) m.overtime = true;
         return null;
       }
       case 'RoundStarted':
@@ -164,6 +182,7 @@ export class MatchTracker {
           m.playlistId = game.PlaylistId;
         }
         if (game.Arena) m.arena = String(game.Arena);
+        if (!game.bReplay) this.clock(m, game.TimeSeconds);
         if (game.bReplay && !m.started) m.isReplay = true;
         m.overtime = m.overtime || !!game.bOvertime;
         for (const t of game.Teams ?? []) {
@@ -235,6 +254,25 @@ export class MatchTracker {
     }
   }
 
+  private clock(m: CurrentMatch, seconds: unknown) {
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return;
+    // After it ran down, the clock only counts up again in overtime.
+    if (m.clockMoved && m.clockLast !== undefined && seconds > m.clockLast + 0.5) m.overtime = true;
+    m.clockMax = Math.max(m.clockMax ?? seconds, seconds);
+    if (m.clockMax - seconds >= 3) m.clockMoved = true;
+    m.clockLast = seconds;
+  }
+
+  /**
+   * Did the game actually get going? A match cancelled before kickoff (e.g. a player failed to
+   * join) has no touches, goals, points or clock time.
+   */
+  private played(m: CurrentMatch, teams: { score: number }[]): boolean {
+    if (m.ballHits > 0 || m.clockMoved) return true;
+    if (teams.some((t) => t.score > 0) || Object.values(m.fallbackGoals).some((g) => g > 0)) return true;
+    return [...m.players.values()].some((p) => (p.touches ?? 0) > 0 || p.score > 0 || p.goals > 0 || p.shots > 0 || p.saves > 0 || p.demos > 0);
+  }
+
   /**
    * A later game in the same lobby (same match id) that the player from this PC isn't in: they're
    * watching it, like an Honor Duel between two others. The camera then follows someone else.
@@ -270,13 +308,23 @@ export class MatchTracker {
     if (this.emittedKeys.includes(key)) return null;
     this.emittedKeys.push(key);
     if (this.emittedKeys.length > 100) this.emittedKeys.shift();
-    const spectated = this.watching(m);
-    const localPlayer = spectated ? undefined : this.localPlayer(m);
-    if (localPlayer) this.lobby = { guid: m.guid, player: { name: localPlayer.name, primaryId: localPlayer.primaryId } };
-    let teams = [...m.teams.values()];
+    let teams = [...m.teams.values()].map((t) => ({ ...t }));
     if (!teams.length && Object.keys(m.fallbackGoals).length) {
       teams = [0, 1].map((t) => ({ teamNum: t, score: m.fallbackGoals[t] ?? 0 }));
     }
+    // The last goal can come after the last state update (an overtime goal ends the game at once).
+    for (const t of teams) t.score = Math.max(t.score, m.fallbackGoals[t.teamNum] ?? 0);
+    // A tie with a winner: the overtime goal was missed. (Not when time was left: that's a forfeit.)
+    const winner = leftEarly ? undefined : teams.find((t) => t.teamNum === m.winnerTeamNum);
+    const timeLeft = !m.overtime && (m.clockLast ?? 0) > 0;
+    if (winner && !timeLeft && teams.length === 2 && teams.every((t) => t.score === winner.score)) {
+      winner.score++;
+      m.overtime = true;
+    }
+    const notStarted = !this.played(m, teams);
+    const spectated = !notStarted && this.watching(m);
+    const localPlayer = spectated ? undefined : this.localPlayer(m);
+    if (localPlayer && !notStarted) this.lobby = { guid: m.guid, player: { name: localPlayer.name, primaryId: localPlayer.primaryId } };
     const result: LiveMatchResult = {
       guid: m.guid,
       endedAt: new Date().toISOString(),
@@ -289,6 +337,7 @@ export class MatchTracker {
       players: [...m.players.values()],
       localPlayer,
       ...(spectated ? { spectated: true } : {}),
+      ...(notStarted ? { notStarted: true } : {}),
     };
     this.events.onMatchFinished?.(result);
     return result;

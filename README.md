@@ -55,6 +55,7 @@ Your journal is never replaced, not by updates and not by running the installer 
 - Logging the same thing twice in a day adds to that day's total instead of creating a second entry.
 - Logged something on the wrong day? **Move** it (the arrows next to an entry) to any other day, all of it or just part: some of the minutes, or pick which games go (for example the ones after midnight).
 - Don't want to see your wins and losses on a day? **Hide record** on that day hides them (saved per day).
+- A tracked game that shouldn't be there (not yours, cancelled, …)? Delete it from the day's **Tracked matches** list: the game and its win or loss come off that day's count too. Games with no touches, points or goals are marked *Didn't start?* so they're easy to spot.
 - While you type, you see how it compares to **yesterday**, **your average**, the **season average** and your **best day**, including when you set a new personal best.
 - Games start with **Ranked 1s / 2s / 3s**, **Casual 1s / 2s / 3s** and **Honor Duel**. Add your own and put them in any order in Settings.
 
@@ -80,7 +81,8 @@ RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.co
 - Every online match you finish is added to the current day: **ranked or casual**, the **mode**, **win or loss**, the score and your goals, assists, saves and shots.
 - **Honor Duels** are logged separately, with their own wins and losses. Duels you only watch (two others in your lobby) are not logged.
 - It works out which account you're playing on by itself, so it handles **multiple accounts** with no setup. The top bar shows *Game connected · your account*.
-- Freeplay, training, workshop maps and offline games are never logged. Private matches are optional.
+- Freeplay, training, workshop maps and offline games are never logged. **Matches that never got going** (cancelled before kickoff, e.g. because a player didn't join) aren't logged either: no touches, no goals and no time on the clock means no game.
+- Private matches are logged too; turn on **Ignore private matches** in Settings to skip them.
 - Win/loss tracking can be switched off separately for regular games and for Honor Duels.
 - You get a notification for each logged game.
 
@@ -92,6 +94,13 @@ RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.co
 - **Star** the stats you care about most to pin them to the top of Statistics and to your home screen.
 
 ![Statistics](docs/screenshots/statistics.png)
+
+### Make it yours
+- Two looks: **Aurora** (new in 1.7, the default: glass panels, glowing accents and bolder type) and **Classic** (the original look). Switch in **Settings → Appearance**.
+- **Your own colors:** start from a set (*Purple haze*, *Toxic*, *Champion gold*, *Ice*, *Crimson*, *Mono*…) or pick the accent, second accent, background, cards, text, wins and losses yourself. They work with both looks.
+- **Any picture as the app icon:** the window, the taskbar, the tray and your RL Journal shortcuts (Windows) or the app-menu entry (Linux) use it. Choose whether it fills the square and has rounded corners; *Default icon* brings the RL Journal icon back.
+
+![Appearance](docs/screenshots/appearance.png)
 
 ### Your data
 - Everything is stored locally on your computer. There's no account and no cloud.
@@ -115,7 +124,8 @@ npm run dist:linux   # Linux AppImage → release/ (run on Linux)
 
 Handy for development:
 
-- `node scripts/fake-stats-api.mjs 49124 YourName session` pretends to be Rocket League: freeplay, then a Ranked 3s win, then an Honor Duel. Pass a playlist id instead of `session` for a single match (11 = Ranked 2s, 3 = Casual 3s, 53 = Honor Duel).
+- `node scripts/fake-stats-api.mjs 49124 YourName session` pretends to be Rocket League: freeplay, then a Ranked 3s win, then an Honor Duel. Pass a playlist id instead of `session` for a single match (11 = Ranked 2s, 3 = Casual 3s, 53 = Honor Duel), or `cancelled` for a match that's called off before kickoff.
+- `npm run icon` renders `build/icon.svg` (the app icon) to the PNGs the installers use.
 - `RLJ_USER_DATA=<folder>` runs the app with a separate data folder.
 
 ### Releasing
@@ -150,7 +160,14 @@ This program will not transfer any information to other networked systems unless
 - **Rocket League Stats API:** to log games, the app connects to the game's Stats API on your own computer (`localhost`). This connection never leaves your PC. You can turn it off in **Accounts & Sync**.
 - **Updates:** every few hours the app asks GitHub (github.com) whether a newer version exists, and downloads it from there. Like any download, GitHub sees your IP address ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)). Nothing about you or your journal is sent. You can turn automatic checks off in **Settings → Updates**.
 - **Season dates:** when you add a season (and update checks are on), the app downloads the Rocket League season calendar (`seasons.json`) from this GitHub repository, so it knows about new seasons. Nothing is sent.
+- **App icon:** a picture you pick as the app icon is copied into your data folder. On Windows the app also points its own shortcuts (desktop, Start menu, taskbar pins) at it; *Default icon* undoes that.
 - **Game config:** the app changes Rocket League's `TAStatsAPI.ini` / `DefaultStatsAPI.ini` only when you click **Enable Stats API**, and keeps a backup of the original file.
+
+## Credits
+
+The idea for RL Journal came from **Ascènd.** — see **About** in the app for the full (completely unbiased) story.
+
+Fonts: [Inter](https://github.com/rsms/inter) and [Outfit](https://github.com/Outfitio/Outfit-Fonts), both under the SIL Open Font License 1.1 (see `assets/fonts`). Icons: [Lucide](https://lucide.dev).
 
 ## License
 

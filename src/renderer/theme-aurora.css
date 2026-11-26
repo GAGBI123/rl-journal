@@ -1,0 +1,884 @@
+/*
+ * Aurora (1.7): glass panels over a glowing night-sky background, gradient accents and bolder type.
+ * Everything here is keyed on <html data-theme="aurora">; the Classic look is styles.css alone.
+ * Colors come from the same variables as Classic, so custom colors (Settings → Appearance) work here too.
+ */
+
+:root[data-theme='aurora'] {
+  --bg: #05070f;
+  --bg-2: #090d1b;
+  --panel: #111729;
+  --panel-2: #161d33;
+  --panel-3: #1f2843;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #f2f5fc;
+  --text-2: #b3bdd3;
+  --muted: #7c87a2;
+  --blue: #4d8dff;
+  --blue-2: #3a6ff0;
+  --orange: #ff7a3d;
+  --orange-2: #f05a24;
+  --good: #2fd27a;
+  --bad: #ff6b6b;
+  --warn: #ffbe3d;
+  --grid: #1a2238;
+  --axis: #2a3554;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.75);
+  --font: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Outfit Variable', 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
+  --series-1: var(--blue);
+
+  /* Aurora's own tokens. */
+  --violet: color-mix(in oklch, var(--blue) 55%, var(--orange));
+  --glass: linear-gradient(180deg, color-mix(in srgb, var(--panel-2) 74%, transparent), color-mix(in srgb, var(--panel) 56%, transparent));
+  --glass-solid: color-mix(in srgb, var(--panel) 78%, var(--bg));
+  --glass-border: rgba(255, 255, 255, 0.075);
+  --glass-border-hover: rgba(255, 255, 255, 0.15);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --lift: 0 18px 40px -26px rgba(0, 0, 0, 0.9);
+  --accent-grad: linear-gradient(135deg, var(--blue), var(--violet));
+  --tri-grad: linear-gradient(90deg, var(--blue), var(--violet) 55%, var(--orange));
+}
+
+[data-theme='aurora'] body {
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.006em;
+}
+
+/* ------------------------------------------------------------- backdrop */
+
+[data-theme='aurora'] .app {
+  position: relative;
+  grid-template-columns: 256px minmax(0, 1fr);
+  background:
+    radial-gradient(1100px 680px at 8% -12%, color-mix(in srgb, var(--blue) 20%, transparent), transparent 62%),
+    radial-gradient(900px 620px at 104% 112%, color-mix(in srgb, var(--orange) 15%, transparent), transparent 62%),
+    radial-gradient(720px 520px at 58% 46%, color-mix(in srgb, var(--violet) 7%, transparent), transparent 70%),
+    var(--bg);
+}
+
+/* A faint dot grid near the top left, like stadium lights through haze. */
+[data-theme='aurora'] .app::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1.4px);
+  background-size: 24px 24px;
+  -webkit-mask-image: radial-gradient(820px 560px at 22% 0%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(820px 560px at 22% 0%, #000 0%, transparent 72%);
+}
+
+[data-theme='aurora'] .app > .sidebar,
+[data-theme='aurora'] .app > .main {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme='aurora'] ::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+[data-theme='aurora'] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+[data-theme='aurora'] ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+/* ------------------------------------------------------------- sidebar */
+
+[data-theme='aurora'] .sidebar {
+  margin: 10px 0 10px 10px;
+  border-radius: 22px;
+  border: 1px solid var(--glass-border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-2) 66%, transparent), color-mix(in srgb, var(--panel) 38%, transparent));
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: var(--glass-shine), 0 30px 60px -30px rgba(0, 0, 0, 0.8);
+  padding: 0 12px 14px;
+}
+
+[data-theme='aurora'] .brand {
+  height: 74px;
+  padding: 10px 6px 0;
+  gap: 12px;
+}
+
+[data-theme='aurora'] .brand-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -6px color-mix(in srgb, var(--blue) 60%, transparent), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='aurora'] .brand-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+[data-theme='aurora'] .brand-name small {
+  font-family: var(--font);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  margin-top: 1px;
+  background: var(--tri-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-theme='aurora'] .nav {
+  gap: 4px;
+  margin-top: 18px;
+}
+
+[data-theme='aurora'] .nav-item {
+  padding: 7px 10px 7px 7px;
+  border-radius: 14px;
+  gap: 12px;
+  font-weight: 560;
+  font-size: 14px;
+  color: var(--text-2);
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+[data-theme='aurora'] .nav-item > svg {
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  flex: 0 0 auto;
+  transition: background 0.2s, box-shadow 0.2s, color 0.2s;
+}
+
+[data-theme='aurora'] .nav-item:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+[data-theme='aurora'] .nav-item:hover > svg {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='aurora'] .nav-item.active {
+  color: var(--text);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--blue) 22%, transparent), color-mix(in srgb, var(--violet) 8%, transparent) 80%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 28%, transparent);
+}
+
+[data-theme='aurora'] .nav-item.active > svg {
+  color: #fff;
+  background: var(--accent-grad);
+  box-shadow: 0 6px 18px -4px color-mix(in srgb, var(--blue) 75%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+[data-theme='aurora'] .season-mini {
+  border-radius: 16px;
+  border: 1px solid var(--glass-border);
+  background:
+    radial-gradient(ellipse at top right, color-mix(in srgb, var(--blue) 18%, transparent), transparent 70%),
+    rgba(255, 255, 255, 0.03);
+  padding: 13px 14px;
+}
+
+[data-theme='aurora'] .season-mini:hover {
+  border-color: var(--glass-border-hover);
+}
+
+[data-theme='aurora'] .season-mini .label {
+  color: var(--blue-text);
+  letter-spacing: 1.2px;
+}
+
+[data-theme='aurora'] .season-mini .title {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+[data-theme='aurora'] .end-day-btn {
+  border-radius: 12px;
+}
+
+/* ------------------------------------------------------------- top bar + page */
+
+[data-theme='aurora'] .topbar {
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  height: 48px;
+  flex-basis: 48px;
+  padding-left: 22px;
+}
+
+[data-theme='aurora'] .platform-linux .topbar,
+[data-theme='aurora'].platform-linux .topbar {
+  padding-right: 18px;
+}
+
+[data-theme='aurora'] .topbar .crumbs {
+  font-size: 12.5px;
+  gap: 4px;
+}
+
+[data-theme='aurora'] .topbar .crumbs b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+[data-theme='aurora'] .topbar > .icon-btn,
+[data-theme='aurora'] .topbar [aria-label='Notifications'] {
+  border-radius: 11px;
+}
+
+[data-theme='aurora'] .content {
+  padding: 18px 36px 64px;
+}
+
+[data-theme='aurora'] .page {
+  animation: aurora-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes aurora-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+[data-theme='aurora'] .page-header {
+  margin-bottom: 26px;
+}
+
+[data-theme='aurora'] .page-header h1 {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.9px;
+  line-height: 1.1;
+  background: linear-gradient(115deg, var(--text) 35%, color-mix(in srgb, var(--blue) 60%, var(--text)) 70%, color-mix(in srgb, var(--violet) 70%, var(--text)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding-bottom: 2px;
+}
+
+[data-theme='aurora'] .page-header .subtitle {
+  color: var(--text-2);
+  margin-top: 8px;
+}
+
+[data-theme='aurora'] .section-title {
+  margin: 36px 0 14px;
+}
+
+[data-theme='aurora'] .section-title:first-child {
+  margin-top: 0;
+}
+
+[data-theme='aurora'] .section-title h2 {
+  font-size: 12px;
+  letter-spacing: 1.6px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+[data-theme='aurora'] .section-title h2::before {
+  content: '';
+  width: 16px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--accent-grad);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--blue) 70%, transparent);
+}
+
+/* ------------------------------------------------------------- surfaces */
+
+[data-theme='aurora'] .card,
+[data-theme='aurora'] .stat-card,
+[data-theme='aurora'] .entry-row,
+[data-theme='aurora'] .day-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shine), var(--lift);
+}
+
+[data-theme='aurora'] .card {
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+[data-theme='aurora'] .card.hoverable {
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+[data-theme='aurora'] .card.hoverable:hover {
+  border-color: var(--glass-border-hover);
+  background: var(--glass);
+  transform: translateY(-2px);
+  box-shadow: var(--glass-shine), 0 24px 50px -24px rgba(0, 0, 0, 0.9), 0 0 0 1px color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+/* Season cards: the active one gets a gradient rim and two glows. */
+[data-theme='aurora'] .season-card {
+  border-radius: 22px;
+  padding: 22px;
+}
+
+[data-theme='aurora'] .season-card.active-season {
+  border: 1px solid transparent;
+  background:
+    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--blue) 26%, transparent), transparent 58%) padding-box,
+    radial-gradient(ellipse at 0% 100%, color-mix(in srgb, var(--orange) 16%, transparent), transparent 58%) padding-box,
+    linear-gradient(var(--glass-solid), var(--glass-solid)) padding-box,
+    linear-gradient(135deg, color-mix(in srgb, var(--blue) 70%, transparent), color-mix(in srgb, var(--violet) 40%, transparent) 45%, color-mix(in srgb, var(--orange) 55%, transparent)) border-box;
+  box-shadow: 0 30px 70px -30px color-mix(in srgb, var(--blue) 45%, transparent), var(--glass-shine);
+}
+
+[data-theme='aurora'] .season-card .s-number {
+  letter-spacing: 1.6px;
+  font-weight: 700;
+  color: var(--blue-text);
+}
+
+[data-theme='aurora'] .season-card .s-title {
+  font-family: var(--font-display);
+}
+
+[data-theme='aurora'] .kv .k {
+  letter-spacing: 1px;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+[data-theme='aurora'] .kv .v {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme='aurora'] .summary-strip {
+  gap: 14px;
+}
+
+[data-theme='aurora'] .summary-strip .card {
+  position: relative;
+  overflow: hidden;
+}
+
+/* A soft light along the top edge of summary cards. */
+[data-theme='aurora'] .summary-strip .card::before,
+[data-theme='aurora'] .stat-card::before {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--blue) 80%, transparent), transparent);
+  opacity: 0.7;
+}
+
+[data-theme='aurora'] .summary-strip .card:nth-child(2)::before {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--orange) 85%, transparent), transparent);
+}
+
+[data-theme='aurora'] .summary-strip .card:nth-child(3)::before {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--violet) 85%, transparent), transparent);
+}
+
+/* Stat cards */
+[data-theme='aurora'] .stat-card {
+  border-radius: var(--radius);
+  padding: 16px 18px 17px;
+  min-height: 120px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+[data-theme='aurora'] .stat-card:hover {
+  border-color: var(--glass-border-hover);
+}
+
+[data-theme='aurora'] .stat-card.fav {
+  border-color: color-mix(in srgb, var(--warn) 20%, transparent);
+  background: radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--warn) 9%, transparent), transparent 60%), var(--glass);
+}
+
+[data-theme='aurora'] .stat-card .s-label {
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+[data-theme='aurora'] .stat-card .s-value {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, var(--text) 40%, color-mix(in srgb, var(--text) 62%, var(--blue)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-theme='aurora'] .breakdown .b-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+}
+
+[data-theme='aurora'] .breakdown .b-fill {
+  border-radius: 6px;
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18));
+  box-shadow: 0 0 12px -2px currentColor;
+}
+
+/* Progress bars: blue → violet → orange with a glow. */
+[data-theme='aurora'] .progress {
+  height: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  overflow: visible;
+}
+
+[data-theme='aurora'] .progress > div {
+  border-radius: 8px;
+  background: var(--tri-grad);
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--blue) 80%, transparent);
+}
+
+[data-theme='aurora'] .progress.orange > div {
+  background: linear-gradient(90deg, var(--orange), color-mix(in srgb, var(--orange) 50%, var(--violet)));
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--orange) 80%, transparent);
+}
+
+[data-theme='aurora'] .season-mini .progress {
+  height: 5px;
+}
+
+/* Days on the season page */
+[data-theme='aurora'] .day-card {
+  border-radius: 15px;
+  padding: 11px 12px;
+  transition: border-color 0.18s, transform 0.18s, background 0.18s;
+}
+
+[data-theme='aurora'] .day-card:hover {
+  border-color: var(--glass-border-hover);
+  transform: translateY(-2px);
+}
+
+[data-theme='aurora'] .day-card .d-num {
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 14.5px;
+  white-space: nowrap;
+}
+
+[data-theme='aurora'] .day-card .d-num .badge {
+  padding: 0 6px;
+  margin-left: 2px !important;
+}
+
+[data-theme='aurora'] .day-card.today {
+  border: 1px solid transparent;
+  background:
+    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--blue) 24%, transparent), transparent 70%) padding-box,
+    linear-gradient(var(--glass-solid), var(--glass-solid)) padding-box,
+    linear-gradient(135deg, var(--blue), var(--violet), var(--orange)) border-box;
+  box-shadow: 0 12px 34px -12px color-mix(in srgb, var(--blue) 65%, transparent);
+}
+
+[data-theme='aurora'] .day-card.future {
+  opacity: 0.38;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+[data-theme='aurora'] .week-label {
+  letter-spacing: 1.4px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+/* Entries on a day */
+[data-theme='aurora'] .entry-row {
+  border-radius: 15px;
+  padding: 12px 15px;
+  margin-bottom: 8px;
+  transition: border-color 0.18s;
+}
+
+[data-theme='aurora'] .entry-row:hover {
+  border-color: var(--glass-border-hover);
+}
+
+[data-theme='aurora'] .entry-row .e-bar {
+  width: 4px;
+  box-shadow: 0 0 12px var(--e-color);
+}
+
+[data-theme='aurora'] .entry-row .e-value {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme='aurora'] .entry-group .g-head {
+  letter-spacing: 0.2px;
+}
+
+[data-theme='aurora'] .color-dot {
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ------------------------------------------------------------- controls */
+
+[data-theme='aurora'] .btn {
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.045);
+  font-weight: 600;
+  box-shadow: var(--glass-shine);
+  transition: background 0.18s, border-color 0.18s, transform 0.12s, box-shadow 0.18s, filter 0.18s;
+}
+
+[data-theme='aurora'] .btn:hover {
+  background: rgba(255, 255, 255, 0.085);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme='aurora'] .btn.small {
+  height: 31px;
+  border-radius: 10px;
+}
+
+[data-theme='aurora'] .btn.large {
+  height: 46px;
+  border-radius: 14px;
+}
+
+[data-theme='aurora'] .btn.primary {
+  background: var(--accent-grad);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 10px 26px -10px color-mix(in srgb, var(--blue) 85%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+[data-theme='aurora'] .btn.primary:hover {
+  background: var(--accent-grad);
+  filter: brightness(1.1) saturate(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -10px color-mix(in srgb, var(--blue) 95%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+[data-theme='aurora'] .btn.orange {
+  background: linear-gradient(135deg, var(--orange), color-mix(in srgb, var(--orange) 55%, var(--violet)));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 10px 26px -10px color-mix(in srgb, var(--orange) 85%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+[data-theme='aurora'] .btn.orange:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+[data-theme='aurora'] .btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+[data-theme='aurora'] .btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='aurora'] .btn.danger {
+  background: color-mix(in srgb, var(--bad) 9%, transparent);
+  border-color: color-mix(in srgb, var(--bad) 32%, transparent);
+}
+
+[data-theme='aurora'] .btn:disabled {
+  filter: none;
+  transform: none;
+}
+
+[data-theme='aurora'] .icon-btn {
+  border-radius: 10px;
+}
+
+[data-theme='aurora'] .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='aurora'] .input,
+[data-theme='aurora'] textarea.input,
+[data-theme='aurora'] select.input {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='aurora'] .input:focus {
+  border-color: color-mix(in srgb, var(--blue) 80%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 16%, transparent), 0 0 24px -6px color-mix(in srgb, var(--blue) 70%, transparent);
+}
+
+[data-theme='aurora'] .segmented {
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  padding: 4px;
+}
+
+[data-theme='aurora'] .segmented button {
+  border-radius: 9px;
+  font-weight: 600;
+}
+
+[data-theme='aurora'] .segmented button.on {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 34%, var(--panel-3)), color-mix(in srgb, var(--violet) 22%, var(--panel-3)));
+  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--blue) 80%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--blue) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='aurora'] .chip {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  font-weight: 560;
+}
+
+[data-theme='aurora'] .chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+[data-theme='aurora'] .chip.on {
+  background: color-mix(in srgb, var(--chip-color, var(--blue)) 20%, transparent);
+  border-color: color-mix(in srgb, var(--chip-color, var(--blue)) 75%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--chip-color, var(--blue)) 60%, transparent) inset,
+    0 6px 20px -8px color-mix(in srgb, var(--chip-color, var(--blue)) 90%, transparent);
+}
+
+[data-theme='aurora'] .chip.dashed {
+  background: transparent;
+}
+
+[data-theme='aurora'] .switch {
+  width: 42px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='aurora'] .switch::after {
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme='aurora'] .switch.on {
+  background: var(--accent-grad);
+  box-shadow: 0 0 16px -3px color-mix(in srgb, var(--blue) 85%, transparent);
+}
+
+[data-theme='aurora'] .switch.on::after {
+  transform: translateX(18px);
+}
+
+[data-theme='aurora'] .toggle {
+  padding: 13px 0;
+}
+
+[data-theme='aurora'] .badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='aurora'] .badge.blue {
+  box-shadow: 0 0 14px -6px var(--blue);
+}
+
+[data-theme='aurora'] .badge.active,
+[data-theme='aurora'] .badge.green {
+  box-shadow: 0 0 14px -6px var(--good);
+}
+
+[data-theme='aurora'] .status-pill {
+  height: 30px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(10px);
+}
+
+[data-theme='aurora'] .status-pill.connected .pill-dot {
+  box-shadow: 0 0 10px var(--good);
+}
+
+[data-theme='aurora'] .timer-pill {
+  height: 30px;
+  box-shadow: 0 0 18px -6px var(--t-color);
+}
+
+[data-theme='aurora'] .update-banner {
+  border-radius: 12px;
+}
+
+/* ------------------------------------------------------------- tables, callouts */
+
+[data-theme='aurora'] table.table th {
+  font-size: 10.5px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme='aurora'] table.table td {
+  border-bottom-color: rgba(255, 255, 255, 0.045);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme='aurora'] table.table tbody tr {
+  transition: background 0.15s;
+}
+
+[data-theme='aurora'] table.table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme='aurora'] .callout {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--blue) 9%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 24%, transparent);
+}
+
+[data-theme='aurora'] .callout.warn {
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 26%, transparent);
+}
+
+[data-theme='aurora'] .callout.error {
+  background: color-mix(in srgb, var(--bad) 9%, transparent);
+  border-color: color-mix(in srgb, var(--bad) 28%, transparent);
+}
+
+[data-theme='aurora'] .callout.good {
+  background: color-mix(in srgb, var(--good) 8%, transparent);
+  border-color: color-mix(in srgb, var(--good) 26%, transparent);
+}
+
+[data-theme='aurora'] .hero-empty {
+  border-radius: 26px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background:
+    radial-gradient(ellipse at top, color-mix(in srgb, var(--blue) 18%, transparent), transparent 62%),
+    radial-gradient(ellipse at bottom, color-mix(in srgb, var(--orange) 9%, transparent), transparent 62%),
+    rgba(255, 255, 255, 0.02);
+}
+
+[data-theme='aurora'] .hero-empty h2 {
+  font-family: var(--font-display);
+  font-size: 30px;
+  letter-spacing: -0.5px;
+}
+
+[data-theme='aurora'] .running-timer {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--t-color) 16%, transparent), transparent 75%), var(--glass);
+  border-color: color-mix(in srgb, var(--t-color) 45%, transparent);
+  box-shadow: 0 14px 40px -18px var(--t-color);
+}
+
+[data-theme='aurora'] .running-timer .rt-time,
+[data-theme='aurora'] .tp-big {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme='aurora'] .routine-item.live {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 50%, transparent) inset, 0 10px 26px -14px var(--blue);
+}
+
+[data-theme='aurora'] .entry-form .step-label .n {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--blue) 80%, transparent);
+}
+
+[data-theme='aurora'] .kbd,
+[data-theme='aurora'] .shortcut-key {
+  border-radius: 9px;
+}
+
+/* ------------------------------------------------------------- floating layers */
+
+[data-theme='aurora'] .modal-backdrop {
+  background: rgba(2, 4, 10, 0.58);
+  backdrop-filter: blur(8px) saturate(120%);
+}
+
+[data-theme='aurora'] .modal {
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--blue) 12%, transparent), transparent 55%),
+    color-mix(in srgb, var(--panel) 86%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+  box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.8), var(--glass-shine);
+}
+
+[data-theme='aurora'] .modal-head h3 {
+  font-family: var(--font-display);
+  font-size: 21px;
+  letter-spacing: -0.3px;
+}
+
+[data-theme='aurora'] .popover {
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(24px) saturate(150%);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='aurora'] .toast {
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid var(--blue);
+  box-shadow: 0 20px 50px -16px rgba(0, 0, 0, 0.8);
+}
+
+[data-theme='aurora'] .toast.success {
+  border-left-color: var(--good);
+}
+
+[data-theme='aurora'] .toast.error {
+  border-left-color: var(--bad);
+}
+
+[data-theme='aurora'] .chart-tooltip {
+  border-radius: 12px;
+  backdrop-filter: blur(14px);
+}
+
+[data-theme='aurora'] .splash {
+  background: radial-gradient(800px 500px at 50% 0%, color-mix(in srgb, var(--blue) 18%, transparent), transparent 70%), var(--bg);
+  font-family: var(--font-display);
+}

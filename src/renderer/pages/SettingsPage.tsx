@@ -21,6 +21,7 @@ import {
 } from '../lib/journal';
 import { relativeTime, todayISO } from '../lib/dates';
 import { ShortcutInput } from '../components/ShortcutInput';
+import { AppearanceSettings } from '../components/Appearance';
 import { uid } from '../lib/format';
 import type { Measure, Section } from '../../shared/model';
 
@@ -545,9 +546,11 @@ export function SettingsPage() {
       <div className="page-header">
         <div>
           <h1>Settings</h1>
-          <div className="subtitle">Sections, sync behaviour and your data.</div>
+          <div className="subtitle">Look and colors, sections, sync behaviour and your data.</div>
         </div>
       </div>
+
+      <AppearanceSettings />
 
       <SectionsManager />
 
@@ -594,7 +597,7 @@ export function SettingsPage() {
         />
         <Toggle
           title="Ignore private matches"
-          desc="Private and third-party matches are not logged. Freeplay, training, workshop and offline games are never logged."
+          desc="Off (default): private and third-party matches are logged like other games. On: they're skipped. Freeplay, training, workshop and offline games are never logged."
           on={settings.ignorePrivateMatches}
           onChange={(v) => set('ignorePrivateMatches', v)}
         />

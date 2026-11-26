@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, EyeOff, Gamepad2, ListChecks, Moon, NotebookPen, Pencil, Radio, RotateCcw, Trash2, Trophy, Zap } from 'lucide-react';
 import { useStore } from '../store';
-import { activityById, canEndDay, currentDate, dayNumber, findSeason, reopenableDate, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
+import { activityById, canEndDay, currentDate, dayNumber, deleteMatch, findSeason, reopenableDate, seasonLabel, sectionLabel, sortedSections } from '../lib/journal';
 import { formatLongDate, todayISO } from '../lib/dates';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import { daySummary } from '../lib/stats';
@@ -10,7 +10,11 @@ import { confirmDialog, EmptyState, Modal } from '../components/ui';
 import { DayRoutines, StartRoutineModal } from '../components/DayRoutines';
 import { RunningTimerCard } from '../components/TimerPill';
 import { endCurrentDay, MoveEntryModal, reopenEndedDay } from '../components/DayTools';
-import type { Entry } from '../../shared/model';
+import type { Entry, MatchRecord } from '../../shared/model';
+
+/** A logged game with no sign of play: most likely a match that was cancelled before kickoff. */
+const looksNotStarted = (m: MatchRecord) =>
+  !!m.me && !m.me.touches && !m.me.score && !m.me.goals && !m.me.shots && !m.me.saves && !m.teamScore && !m.opponentScore;
 
 export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }) {
   const data = useStore((s) => s.data);
@@ -75,6 +79,25 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
       const t = findSeason(d, season.id)?.days.find((x) => x.id === day.id);
       if (t) t.entries = t.entries.filter((x) => x.id !== e.id);
       d.matches = d.matches.filter((m) => m.entryId !== e.id);
+    });
+  };
+
+  const removeMatch = async (m: MatchRecord) => {
+    const name = activityById(data, m.activityId)?.name ?? m.mode;
+    const entry = day.entries.find((e) => e.id === m.entryId);
+    const left = Math.max(0, (entry?.amount ?? 1) - 1);
+    const result = m.result === 'win' ? ' Its win is taken off too.' : m.result === 'loss' ? ' Its loss is taken off too.' : '';
+    const ok = await confirmDialog({
+      title: `Delete this ${name} game?`,
+      body: entry
+        ? `${name} on this day goes from ${entry.amount ?? 1} to ${left} game${left === 1 ? '' : 's'}${left === 0 ? ' (the entry goes away)' : ''}.${result}`
+        : 'Only the tracked match details are deleted.',
+      confirmLabel: 'Delete game',
+      danger: true,
+    });
+    if (!ok) return;
+    mutate((d) => {
+      deleteMatch(d, m.id);
     });
   };
 
@@ -295,12 +318,20 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                       {showRecord && <th>Score</th>}
                       <th>G / A / S / Sh</th>
                       <th>Time</th>
+                      <th aria-label="Actions" />
                     </tr>
                   </thead>
                   <tbody>
                     {matchesToday.map((m) => (
                       <tr key={m.id}>
-                        <td>{activityById(data, m.activityId)?.name ?? m.mode}</td>
+                        <td>
+                          {activityById(data, m.activityId)?.name ?? m.mode}
+                          {looksNotStarted(m) && (
+                            <span className="badge suspect" title="No touches, points or goals: this match probably never started (e.g. it was cancelled). Delete it if it wasn't a real game.">
+                              Didn't start?
+                            </span>
+                          )}
+                        </td>
                         {showRecord && (
                         <td className={m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}>
                           {m.result === 'win' ? (
@@ -317,6 +348,11 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                         {showRecord && <td>{m.teamScore !== undefined ? `${m.teamScore} – ${m.opponentScore ?? 0}${m.overtime ? ' OT' : ''}` : '—'}</td>}
                         <td>{m.me ? `${m.me.goals} / ${m.me.assists} / ${m.me.saves} / ${m.me.shots}` : '—'}</td>
                         <td className="muted">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="m-actions">
+                          <button className="icon-btn" title="Delete this game (not yours, cancelled, …)" aria-label="Delete this game" onClick={() => removeMatch(m)}>
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

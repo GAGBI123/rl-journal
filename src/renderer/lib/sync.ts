@@ -105,6 +105,15 @@ export function applyLiveMatch(data: AppData, result: LiveMatchResult): SyncOutc
   if (result.spectated) return { logged: false };
   if (info.kind === 'private' && settings.ignorePrivateMatches) return { logged: false };
   if (data.matches.some((m) => m.guid === result.guid && m.playlistId === result.playlistId)) return { logged: false };
+  // Cancelled before kickoff (e.g. a player didn't join): nobody played, so it isn't a game.
+  if (result.notStarted) {
+    notify(data, {
+      kind: 'info',
+      title: `${info.mode} game not logged`,
+      body: "The match ended before it got going (no touches, goals or clock time), like a match that's cancelled because a player didn't join.",
+    });
+    return { logged: false };
+  }
 
   if (result.players.length) {
     settings.lastMatchPlayers = result.players.map((p) => ({ name: p.name, primaryId: p.primaryId }));

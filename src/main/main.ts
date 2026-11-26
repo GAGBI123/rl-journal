@@ -1,5 +1,5 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, shell, Tray } from 'electron';
-import { promises as fs, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, net, Notification, shell, Tray } from 'electron';
+import { promises as fs, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { getDataFolder, loadData, saveData } from './storage';
 import { LiveGameClient } from './liveGame';
@@ -14,6 +14,7 @@ import { TimerService } from './timer';
 import { OverlayManager } from './overlay';
 import { playlistInfo } from '../shared/playlists';
 import { validSeasons } from '../shared/rlSeasons';
+import { clearCustomIcon, customIconDataUrl, hasCustomIcon, iconImage, iconPath, setCustomIcon, syncShortcutIcons } from './appIcon';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const isWin = process.platform === 'win32';
@@ -53,11 +54,6 @@ function takeRelaunchMode(): Exclude<StartMode, 'show'> | null {
   }
 }
 
-function iconPath() {
-  const candidates = [path.join(app.getAppPath(), 'assets', 'icon.png'), path.join(__dirname, '..', 'assets', 'icon.png')];
-  return candidates.find((p) => existsSync(p));
-}
-
 function send(channel: string, payload: unknown) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
@@ -69,6 +65,19 @@ const live = new LiveGameClient({
   },
   onPlayers: (p) => send('live:players', p),
   onMatch: (m) => {
+    // What the game reported (no names), to see later why a game was or wasn't logged.
+    log('match finished', {
+      playlist: m.playlistId,
+      online: !!m.guid,
+      score: m.teams.map((t) => t.score).join('-'),
+      winner: m.winnerTeamNum,
+      leftEarly: m.leftEarly || undefined,
+      overtime: m.overtime || undefined,
+      notStarted: m.notStarted || undefined,
+      spectated: m.spectated || undefined,
+      players: m.players.length,
+      local: !!m.localPlayer,
+    });
     if (rendererReady) send('live:match', m);
     else pendingMatches.push(m);
   },
@@ -247,11 +256,10 @@ function createWindow(startMode: StartMode = 'show') {
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
+const traySize = isWin ? 16 : 24;
+
 function createTray() {
-  const icon = iconPath();
-  const size = isWin ? 16 : 24;
-  const img = icon ? nativeImage.createFromPath(icon).resize({ width: size, height: size }) : nativeImage.createEmpty();
-  tray = new Tray(img);
+  tray = new Tray(iconImage(traySize));
   tray.setToolTip('RL Journal');
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -347,6 +355,39 @@ function registerIpc() {
     if (!app.isPackaged) return;
     if (isWin) app.setLoginItemSettings({ openAtLogin: !!s.startWithWindows, args: ['--hidden'] });
     else void setLinuxAutostart(!!s.startWithWindows);
+  });
+
+  // The app icon: a picture the user picked (already a square PNG), or back to the built-in one.
+  const applyIcon = () => {
+    if (win && !win.isDestroyed()) win.setIcon(iconImage());
+    tray?.setImage(iconImage(traySize));
+    syncShortcutIcons();
+    void integrateAppImage(iconPath());
+  if (hasCustomIcon()) setTimeout(syncShortcutIcons, 3000);
+  };
+  ipcMain.handle('icon:get', () => customIconDataUrl());
+  ipcMain.handle('icon:set', async (_e, dataUrl: string) => {
+    if (!(await setCustomIcon(dataUrl))) return null;
+    applyIcon();
+    return customIconDataUrl();
+  });
+  ipcMain.handle('icon:reset', async () => {
+    await clearCustomIcon();
+    applyIcon();
+    return null;
+  });
+  // Windows: the window buttons' area follows the app's colors.
+  ipcMain.handle('app:titlebar', (_e, c: { color?: string; symbolColor?: string }) => {
+    const hex = (v: unknown) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : undefined);
+    const color = hex(c?.color);
+    const symbolColor = hex(c?.symbolColor);
+    if (!isWin || !win || win.isDestroyed() || !color) return;
+    try {
+      win.setTitleBarOverlay({ color, symbolColor: symbolColor ?? '#9fb0d0', height: 40 });
+      win.setBackgroundColor(color);
+    } catch (err) {
+      log('title bar colors failed', String(err));
+    }
   });
 
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }));

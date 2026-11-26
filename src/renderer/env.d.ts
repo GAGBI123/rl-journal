@@ -49,6 +49,11 @@ declare global {
       hotkeyCheck(accel: string): Promise<'ok' | 'taken' | 'invalid'>;
       hotkeySuspend(on: boolean): Promise<void>;
       fetchSeasons(): Promise<RlSeasonInfo[] | null>;
+      /** The custom app icon as a data URL, or null for the built-in icon. */
+      iconGet(): Promise<string | null>;
+      iconSet(dataUrl: string): Promise<string | null>;
+      iconReset(): Promise<null>;
+      setTitleBar(c: { color: string; symbolColor: string }): Promise<void>;
       onOverlayFlash(cb: (action: TimerAction) => void): () => void;
     };
   }

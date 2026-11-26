@@ -176,8 +176,9 @@ describe('live game sync', () => {
     expect(data.notifications[0].kind).toBe('sync');
   });
 
-  it('skips private matches and creates new modes in the Games section', () => {
+  it('skips private matches when that is on, and creates new modes in the Games section', () => {
     const { data, season } = setup();
+    data.settings.ignorePrivateMatches = true;
     expect(applyLiveMatch(data, match({ playlistId: 6, guid: 'P' })).logged).toBe(false);
     expect(applyLiveMatch(data, match({ playlistId: 27, guid: 'H' })).logged).toBe(true);
     const hoops = data.activities.find((a) => a.name === 'Ranked Hoops')!;

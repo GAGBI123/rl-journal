@@ -51,8 +51,9 @@ export async function integrateAppImage(iconFile: string | undefined) {
   try {
     if (iconFile && existsSync(iconFile)) {
       const dest = path.join(dataHome(), 'icons', 'hicolor', '512x512', 'apps', 'rl-journal.png');
-      const [a, b] = await Promise.all([fs.stat(iconFile).catch(() => null), fs.stat(dest).catch(() => null)]);
-      if (!b || !a || a.size !== b.size) {
+      // Compared byte for byte: the icon can be a picture the user picked (Settings → Appearance).
+      const [a, b] = await Promise.all([fs.readFile(iconFile).catch(() => null), fs.readFile(dest).catch(() => null)]);
+      if (!b || !a || !a.equals(b)) {
         await fs.mkdir(path.dirname(dest), { recursive: true });
         await fs.copyFile(iconFile, dest);
       }

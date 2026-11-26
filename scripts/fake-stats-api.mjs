@@ -2,6 +2,7 @@
 // Usage: node scripts/fake-stats-api.mjs [port] [playerName] [playlistId | "session"]
 //   playlistId  one won match in that playlist (11 = Ranked 2s, 3 = Casual 3s, 53 = Honor Duel …)
 //   session     freeplay (must NOT be logged) → Ranked 3s win → Honor Duel loss in the same lobby
+//   cancelled   a Ranked 2s match that's cancelled before kickoff (must NOT be logged)
 import { WebSocketServer } from 'ws';
 
 const port = Number(process.argv[2] ?? 49124);
@@ -62,8 +63,17 @@ function match(guid, playlistId, win) {
   ];
 }
 
+function cancelled(guid) {
+  // Nobody touched the ball and the clock never ran: the match was called off before kickoff.
+  const idle = state(guid, 11, 0, 0);
+  for (const p of idle.Data.Players) Object.assign(p, { Score: 0, Goals: 0, Shots: 0, Assists: 0, Saves: 0, Touches: 0, CarTouches: 0, Demos: 0 });
+  idle.Data.Game.TimeSeconds = 300;
+  return [ev('MatchCreated', guid), ev('PlayerJoined', guid, { PlayerName: me, PrimaryId: myId }), ev('MatchInitialized', guid), idle, idle, ev('MatchEnded', guid, { WinnerTeamNum: 0 }), ev('MatchDestroyed', guid)];
+}
+
 function scenario() {
   const stamp = Date.now();
+  if (mode === 'cancelled') return cancelled('FAKE' + stamp);
   if (mode !== 'session') {
     const guid = 'FAKE' + stamp;
     return [...match(guid, Number(mode), true), ev('MatchDestroyed', guid)];

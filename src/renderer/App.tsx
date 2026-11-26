@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, BarChart3, Bell, CheckCircle2, House, Info, Link2, ListChecks, Moon, RotateCcw, Settings, TriangleAlert, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, Bell, CheckCircle2, Heart, House, Info, Link2, ListChecks, Moon, RotateCcw, Settings, TriangleAlert, X } from 'lucide-react';
 import { useStore, type View } from './store';
 import { ConfirmHost } from './components/ui';
 import { TimerPill } from './components/TimerPill';
@@ -10,6 +10,9 @@ import { StatsPage } from './pages/StatsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { RoutinesPage } from './pages/RoutinesPage';
+import { AboutPage } from './pages/AboutPage';
+import { applyTheme } from './lib/theme';
+import logo from '../../build/icon.svg';
 import { canEndDay, currentDate, dayForDate, dayNumber, findSeason, reopenableDate, seasonLabel } from './lib/journal';
 import { endCurrentDay, reopenEndedDay } from './components/DayTools';
 import { relativeTime, todayISO } from './lib/dates';
@@ -31,13 +34,13 @@ function Sidebar() {
     { icon: BarChart3, label: 'Statistics', view: { name: 'stats' }, match: ['stats'] },
     { icon: Link2, label: 'Accounts & Sync', view: { name: 'accounts' }, match: ['accounts'] },
     { icon: Settings, label: 'Settings', view: { name: 'settings' }, match: ['settings'] },
+    { icon: Heart, label: 'About', view: { name: 'about' }, match: ['about'] },
   ];
+  const appIcon = useStore((s) => s.appIcon);
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">
-          <span />
-        </div>
+        <img className="brand-img" src={appIcon ?? logo} alt="" draggable={false} />
         <div className="brand-name">
           RL Journal
           <small>TRAIN · PLAY · TRACK</small>
@@ -235,6 +238,7 @@ function TopBar() {
     if (view.name === 'stats') out.push('Statistics');
     if (view.name === 'accounts') out.push('Accounts & Sync');
     if (view.name === 'settings') out.push('Settings');
+    if (view.name === 'about') out.push('About');
     return out;
   }, [view, data]);
   return (
@@ -341,6 +345,8 @@ function CurrentPage() {
       return <AccountsPage />;
     case 'settings':
       return <SettingsPage />;
+    case 'about':
+      return <AboutPage />;
   }
 }
 
@@ -348,6 +354,11 @@ export function App() {
   const loaded = useStore((s) => s.loaded);
   const view = useStore((s) => s.view);
   const contentRef = useRef<HTMLDivElement>(null);
+  const theme = useStore((s) => s.data.settings.theme);
+  const customColors = useStore((s) => s.data.settings.customColors);
+  useEffect(() => {
+    if (loaded) applyTheme({ theme, customColors });
+  }, [loaded, theme, customColors]);
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   }, [view]);

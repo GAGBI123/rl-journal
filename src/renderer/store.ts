@@ -11,7 +11,8 @@ export type View =
   | { name: 'stats'; seasonId?: string }
   | { name: 'routines' }
   | { name: 'accounts' }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  | { name: 'about' };
 
 export interface Toast {
   id: string;
@@ -31,6 +32,8 @@ interface State {
   update: UpdateStatus;
   timer: TimerState | null;
   toasts: Toast[];
+  /** The custom app icon (data URL), or null for the built-in one. */
+  appIcon: string | null;
   navigate: (v: View, opts?: { replace?: boolean }) => void;
   back: () => void;
   mutate: (fn: (draft: AppData) => void) => void;
@@ -66,6 +69,7 @@ export const useStore = create<State>((set, get) => ({
   update: { state: 'idle' },
   timer: null,
   toasts: [],
+  appIcon: null,
   navigate: (v, opts) =>
     set((s) => ({
       view: v,
@@ -98,6 +102,10 @@ export async function loadInitialData() {
   const raw = await window.rlj.loadData();
   const data = raw ? normalizeData(raw) : createDefaultData();
   useStore.setState({ data, loaded: true });
+  window.rlj
+    .iconGet?.()
+    .then((appIcon) => useStore.setState({ appIcon }))
+    .catch(() => undefined);
 }
 
 window.addEventListener('beforeunload', flushSave);
