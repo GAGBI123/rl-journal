@@ -232,6 +232,8 @@ export interface Settings {
   dayMatchesOpen: boolean;
   /** Day page: how the tracked matches are sorted. */
   dayMatchesSort: MatchSort;
+  /** Day page: how the entries of the games section(s) are sorted. */
+  dayGamesSort: EntrySort;
   /**
    * Days end when the user presses "End day" (default), not at midnight: games keep going to the
    * current day, so a session past midnight counts for the day it started.
@@ -264,6 +266,9 @@ export type TimeFormat = 'days' | 'hours';
 
 /** Orders for the tracked matches on the day page (newest first within each group). */
 export type MatchSort = 'recent' | 'oldest' | 'mode' | 'account' | 'result' | 'points';
+
+/** Orders for the entries of a games section on the day page (ties keep the order they were logged in). */
+export type EntrySort = 'logged' | 'mode' | 'account' | 'games' | 'wins';
 
 /** Colors the user can change in Settings → Appearance. */
 export type ColorKey = 'accent' | 'accent2' | 'background' | 'surface' | 'text' | 'win' | 'loss';

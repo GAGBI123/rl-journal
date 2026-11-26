@@ -19,7 +19,7 @@ import {
   sortedSections,
   splitEntryByAccount,
 } from '../lib/journal';
-import { MATCH_SORTS, sortMatches } from '../lib/matchSort';
+import { ENTRY_SORTS, MATCH_SORTS, sortEntries, sortMatches } from '../lib/matchSort';
 import { SortMenu } from '../components/SortMenu';
 import { formatLongDate, todayISO } from '../lib/dates';
 import { fmtMinutes, fmtNum } from '../lib/format';
@@ -29,7 +29,7 @@ import { confirmDialog, EmptyState, Modal } from '../components/ui';
 import { DayRoutines, StartRoutineModal } from '../components/DayRoutines';
 import { RunningTimerCard } from '../components/TimerPill';
 import { endCurrentDay, MoveEntryModal, reopenEndedDay } from '../components/DayTools';
-import type { Account, Entry, MatchRecord, MatchSort } from '../../shared/model';
+import type { Account, Entry, EntrySort, MatchRecord, MatchSort } from '../../shared/model';
 
 /** A logged game with no sign of play: most likely a match that was cancelled before kickoff. */
 const looksNotStarted = (m: MatchRecord) =>
@@ -49,15 +49,19 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   const [openParts, setOpenParts] = useState<Set<string>>(() => new Set());
   const toast = useStore((s) => s.toast);
 
+  // Sorting games by wins would show the wins of a day whose record is hidden.
+  const gamesSortOptions = ENTRY_SORTS.filter((o) => !day?.hideRecord || !o.record);
+  const gamesSort: EntrySort = gamesSortOptions.some((o) => o.value === data.settings.dayGamesSort) ? data.settings.dayGamesSort : 'logged';
+
   const groups = useMemo(() => {
     if (!day) return [];
     return sortedSections(data)
-      .map((section) => ({
-        section,
-        entries: day.entries.filter((e) => activityById(data, e.activityId)?.sectionId === section.id),
-      }))
+      .map((section) => {
+        const entries = day.entries.filter((e) => activityById(data, e.activityId)?.sectionId === section.id);
+        return { section, entries: section.kind === 'games' ? sortEntries(data, entries, gamesSort) : entries };
+      })
       .filter((g) => g.entries.length);
-  }, [data, day]);
+  }, [data, day, gamesSort]);
 
   if (!season || !day) {
     return (
@@ -284,6 +288,14 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                   <span className="color-dot" style={{ background: section.color }} />
                   {sectionLabel(data, section.id)}
                   <span className="muted" style={{ fontWeight: 500 }}>· {entries.length}</span>
+                  {section.kind === 'games' && entries.length > 1 && (
+                    <SortMenu
+                      value={gamesSort}
+                      options={gamesSortOptions}
+                      title={`Sort the ${section.name} entries`}
+                      onChange={(v) => mutate((d) => void (d.settings.dayGamesSort = v))}
+                    />
+                  )}
                 </div>
                 {entries.map((e) => {
                   const a = activityById(data, e.activityId);

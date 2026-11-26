@@ -7,6 +7,7 @@ import {
   type DayRoutine,
   type DayRoutineItem,
   type Entry,
+  type EntrySort,
   type MatchRecord,
   type MatchSort,
   type Measure,
@@ -44,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timerSound: true,
   dayMatchesOpen: true,
   dayMatchesSort: 'recent',
+  dayGamesSort: 'logged',
   endDayManually: true,
   theme: 'aurora',
   timeFormat: 'days',
@@ -56,6 +58,7 @@ const SETTINGS_REV = 2;
 const V170_RELEASED = '2026-11-26T00:20:00.000Z';
 const THEMES = new Set(['aurora', 'classic']);
 const MATCH_SORTS = new Set<MatchSort>(['recent', 'oldest', 'mode', 'account', 'result', 'points']);
+const ENTRY_SORTS = new Set<EntrySort>(['logged', 'mode', 'account', 'games', 'wins']);
 const COLOR_KEYS = new Set(['accent', 'accent2', 'background', 'surface', 'text', 'win', 'loss']);
 
 /** Settings keys from older versions that no longer exist. */
@@ -150,6 +153,7 @@ export function normalizeData(raw: any): AppData {
   data.settings.settingsRev = Math.max(rev, SETTINGS_REV);
   if (!THEMES.has(data.settings.theme)) data.settings.theme = DEFAULT_SETTINGS.theme;
   if (!MATCH_SORTS.has(data.settings.dayMatchesSort)) data.settings.dayMatchesSort = DEFAULT_SETTINGS.dayMatchesSort;
+  if (!ENTRY_SORTS.has(data.settings.dayGamesSort)) data.settings.dayGamesSort = DEFAULT_SETTINGS.dayGamesSort;
   if (data.settings.timeFormat !== 'hours') data.settings.timeFormat = 'days';
   const colors = data.settings.customColors;
   if (colors && typeof colors === 'object') {

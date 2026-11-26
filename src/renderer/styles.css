@@ -1395,6 +1395,12 @@ select.input option {
   color: var(--text-2);
 }
 
+/* Sort button of a games section: on the right, without making the heading taller. */
+.entry-group .g-head .sort-menu {
+  margin: -6px 0 -6px auto;
+  font-weight: 500;
+}
+
 .entry-row {
   display: flex;
   align-items: center;
