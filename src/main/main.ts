@@ -9,7 +9,7 @@ import { integrateAppImage, onWayland, relaunchUnderXWayland, setLinuxAutostart 
 import { log } from './log';
 import { scheduleRelaunchAfterWindowsUpdate } from './relaunch';
 import type { LiveMatchResult, MainSettings } from '../shared/model';
-import type { TimerAction, TimerCompletion, TimerSource } from '../shared/timer';
+import { isCount, type TimerAction, type TimerCompletion, type TimerSource } from '../shared/timer';
 import { TimerService } from './timer';
 import { OverlayManager } from './overlay';
 import { playlistInfo } from '../shared/playlists';
@@ -115,8 +115,9 @@ function registerKey(want: string, current: string, action: () => void): string 
 }
 function syncHotkey() {
   const active = !!timer.get() && !hotkeysSuspended;
-  registeredHotkey = registerKey(active ? timerHotkey : '', registeredHotkey, () => timerCommand('toggle', 'hotkey'));
-  const fin = active && finishHotkey !== timerHotkey ? finishHotkey : '';
+  // A count (amount on the overlay) can't be paused: only the done shortcut is taken.
+  registeredHotkey = registerKey(active && !isCount(timer.get()) ? timerHotkey : '', registeredHotkey, () => timerCommand('toggle', 'hotkey'));
+  const fin = active && (finishHotkey !== timerHotkey || isCount(timer.get())) ? finishHotkey : '';
   registeredFinish = registerKey(fin, registeredFinish, () => timerCommand('finish', 'hotkey'));
 }
 

@@ -11,11 +11,16 @@ export interface TimerStart {
   seasonId: string;
   dayId: string;
   date: string;
-  /** Countdown length; 0 for a stopwatch. */
+  /** Countdown length; 0 for a stopwatch or a count. */
   durationMs: number;
   note?: string;
-  /** 'down' = timer that ends by itself (default), 'up' = stopwatch you stop when you're done. */
-  mode?: 'down' | 'up';
+  /**
+   * 'down' = timer that ends by itself (default), 'up' = stopwatch you stop when you're done,
+   * 'count' = an amount to do (routine amount item): no clock, it waits on the overlay until you press done.
+   */
+  mode?: 'down' | 'up' | 'count';
+  /** With mode 'count': how many to do (shown on the overlay, e.g. 50×). */
+  amount?: number;
   /** Set when the timer runs an item of a routine started on that day. */
   routine?: { dayRoutineId: string; itemId: string };
 }
@@ -50,6 +55,16 @@ export function remainingMs(t: TimerState, now = Date.now()) {
 
 export function isCountUp(t: Pick<TimerState, 'mode'>) {
   return t.mode === 'up';
+}
+
+/** An amount to do (no clock): ends only when the user presses done. */
+export function isCount(t: Pick<TimerState, 'mode'> | null | undefined) {
+  return t?.mode === 'count';
+}
+
+/** 50× · 12.5× */
+export function fmtCount(n: number | undefined) {
+  return `${+(n ?? 0).toFixed(2)}×`;
 }
 
 /** What to show: time left for a timer, time so far for a stopwatch. */

@@ -1,6 +1,6 @@
 // Wires the live game connection and app updates into the store.
 import type { AppNotification, LocalPlayer, MainSettings } from '../shared/model';
-import type { TimerCompletion } from '../shared/timer';
+import { fmtCount, isCount, type TimerCompletion } from '../shared/timer';
 import { applyLiveMatch } from './lib/sync';
 import {
   activityById,
@@ -109,8 +109,9 @@ export function logTimer(c: TimerCompletion) {
   let target: { seasonId: string; dayId: string } | null = null;
   let next: RoutineItemRef | null = null;
   let nextLabel = '';
-  let nextManual = '';
   let routineDone = '';
+  let alreadyDone = false;
+  const count = isCount(c.timer);
   mutate((d) => {
     const t = c.timer;
     let season = findSeason(d, t.seasonId);
@@ -125,22 +126,23 @@ export function logTimer(c: TimerCompletion) {
     // A routine item: tick it off (that also logs the time) and line up the next one.
     const dr = t.routine ? findDayRoutine(day, t.routine.dayRoutineId) : undefined;
     const item = dr?.items.find((i) => i.id === t.routine!.itemId);
-    // completeRoutineItem logs the time itself; if the item is already done (e.g. logged meanwhile
-    // outside the routine), the time is logged as a plain entry instead. Never both.
-    if (dr && item && completeRoutineItem(day, dr.id, item.id, c.minutes, t.note)) {
+    // completeRoutineItem logs the time (or, for a count, what's left of the amount) itself; if the
+    // item is already done (e.g. logged meanwhile outside the routine), a timer's time is logged as a
+    // plain entry instead. Never both.
+    if (dr && item && completeRoutineItem(day, dr.id, item.id, count ? undefined : c.minutes, t.note)) {
       const n = nextRoutineItem(day, dr);
       if (!n) routineDone = dr.name;
       else if (dr.autoNext) {
         const name = activityById(d, n.activityId)?.name ?? 'next item';
         const kind = itemKind(n);
-        // An amount has no timer: it waits to be ticked off.
         const left = routineItemState(day, n.id).remaining;
-        if (kind === 'amount') nextManual = `${fmtItemValue(n, left)} ${name}`;
-        else {
-          next = { seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId: n.id };
-          nextLabel = kind === 'stopwatch' ? `${name} (stopwatch)` : `${name} (${fmtMinutes(left)})`;
-        }
+        next = { seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId: n.id };
+        // An amount goes on the overlay with a done button.
+        nextLabel = kind === 'amount' ? `${fmtItemValue(n, left)} ${name}, on the overlay: press ✓ when done` : kind === 'stopwatch' ? `${name} (stopwatch), started` : `${name} (${fmtMinutes(left)}), started`;
       }
+    } else if (count) {
+      // Its item was ticked off meanwhile (or removed): nothing more to log.
+      alreadyDone = true;
     } else {
       addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, note: t.note });
     }
@@ -149,7 +151,11 @@ export function logTimer(c: TimerCompletion) {
   });
   const tgt = target as { seasonId: string; dayId: string } | null;
   const what = c.timer.mode === 'up' ? 'Stopwatch stopped' : c.early ? 'Timer stopped' : 'Timer done';
-  const title = `${what}: ${fmtMinutes(c.minutes)} ${c.timer.activityName} logged`;
+  const title = count
+    ? alreadyDone
+      ? `${c.timer.activityName} was already ticked off`
+      : `Done: ${fmtCount(c.timer.amount)} ${c.timer.activityName} logged`
+    : `${what}: ${fmtMinutes(c.minutes)} ${c.timer.activityName} logged`;
   if (!tgt) {
     toast({ kind: 'error', title: 'Timer finished but not logged', body: 'Its day or activity no longer exists, and no active season covers that date.' });
     return;
@@ -157,9 +163,9 @@ export function logTimer(c: TimerCompletion) {
   const body = routineDone
     ? `Routine “${routineDone}” complete. Added to ${where}.`
     : next
-      ? `Next up: ${nextLabel}, started.`
-      : nextManual
-        ? `Next up: ${nextManual}. Tick it off when you're done.`
+      ? `Next up: ${nextLabel}.`
+      : alreadyDone
+        ? 'Nothing more was logged.'
         : `Added to ${where}.`;
   toast({ kind: 'success', title, body, view: { name: 'day', seasonId: tgt.seasonId, dayId: tgt.dayId } });
   if (data.settings.timerSound) playChime();
@@ -172,6 +178,26 @@ function startTimers() {
   window.rlj.timerGet().then((t) => useStore.setState({ timer: t }));
   window.rlj.onTimerState((t) => useStore.setState({ timer: t }));
   window.rlj.onTimerComplete((c) => logTimer(c));
+  watchCountTimer();
+}
+
+/**
+ * An amount waiting on the overlay whose item was ticked off another way (a different amount logged
+ * with the pen, enough logged by hand, the routine removed) comes off the overlay.
+ */
+export function watchCountTimer() {
+  let dropped = '';
+  const check = () => {
+    const { timer, data } = useStore.getState();
+    if (!timer || !isCount(timer) || !timer.routine || dropped === timer.id) return;
+    const day = findSeason(data, timer.seasonId)?.days.find((x) => x.id === timer.dayId);
+    const dr = day ? findDayRoutine(day, timer.routine.dayRoutineId) : undefined;
+    const item = dr?.items.find((i) => i.id === timer.routine!.itemId);
+    if (day && item && !routineItemState(day, item.id).done) return;
+    dropped = timer.id;
+    void window.rlj.timerControl('cancel');
+  };
+  return useStore.subscribe(check);
 }
 
 function startUpdates() {

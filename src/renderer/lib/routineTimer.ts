@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { activityById, findDayRoutine, findSeason, fmtItemValue, itemKind, nextRoutineItem, routineItemState, routineItemStates, sectionById } from './journal';
 import { plural } from './format';
 import { confirmDialog } from '../components/ui';
+import { replaceTimerQuestion } from '../components/TimerPill';
 
 export interface RoutineItemRef {
   seasonId: string;
@@ -13,7 +14,8 @@ export interface RoutineItemRef {
 
 /**
  * Start the timer for a routine item: a countdown for what's left of a 'time' item, a stopwatch for a
- * 'stopwatch' item. 'amount' items have no timer. `ask` confirms first if another timer is running.
+ * 'stopwatch' item, and for an 'amount' item a count: the amount waits on the overlay with a done
+ * button (no clock). `ask` confirms first if another timer is running.
  */
 export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Promise<boolean> {
   const { data, timer, toast } = useStore.getState();
@@ -22,21 +24,17 @@ export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Pr
   const item = dr?.items.find((i) => i.id === ref.itemId);
   if (!day || !dr || !item) return false;
   const kind = itemKind(item);
-  if (kind === 'amount') return false;
   const act = activityById(data, item.activityId);
   if (!act) {
     toast({ kind: 'error', title: 'This activity was deleted', body: 'Tick it off by hand or remove it from the routine.' });
     return false;
   }
   if (ask && timer && !(timer.routine?.itemId === item.id)) {
-    const ok = await confirmDialog({
-      title: `Replace the running ${timer.mode === 'up' ? 'stopwatch' : 'timer'}?`,
-      body: `The ${timer.mode === 'up' ? 'stopwatch' : 'timer'} for ${timer.activityName} stops without being logged.`,
-      confirmLabel: 'Start this one',
-    });
+    const ok = await confirmDialog({ ...replaceTimerQuestion(timer), confirmLabel: 'Start this one' });
     if (!ok) return false;
   }
   const idx = dr.items.indexOf(item);
+  const left = routineItemState(day, item.id).remaining;
   await window.rlj.timerStart({
     activityId: act.id,
     activityName: act.name,
@@ -45,9 +43,10 @@ export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Pr
     seasonId: ref.seasonId,
     dayId: ref.dayId,
     date: day.date,
-    durationMs: kind === 'stopwatch' ? 0 : Math.round((routineItemState(day, item.id).remaining || item.minutes) * 60_000),
+    durationMs: kind === 'time' ? Math.round((left || item.minutes) * 60_000) : 0,
     note: item.note,
-    mode: kind === 'stopwatch' ? 'up' : 'down',
+    mode: kind === 'stopwatch' ? 'up' : kind === 'amount' ? 'count' : 'down',
+    ...(kind === 'amount' ? { amount: left || item.amount || 0 } : {}),
     routine: { dayRoutineId: dr.id, itemId: item.id },
   });
   return true;
@@ -73,7 +72,7 @@ export async function afterRoutineAdded(ref: Omit<RoutineItemRef, 'itemId'>, run
     return;
   }
   const name = activityById(data, next.activityId)?.name ?? 'next item';
-  if (runNow && itemKind(next) !== 'amount') {
+  if (runNow) {
     const started = await startRoutineItemTimer({ ...ref, itemId: next.id });
     if (started && already) toast({ kind: 'info', title: `${dr.name} started`, body: already });
     return;

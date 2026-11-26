@@ -1,5 +1,6 @@
-// In-game timer overlay: shows the running timer and lets you pause / resume it.
-import { displayMs, elapsedMs, fmtClock, isCountUp, isRunning, type TimerState } from '../shared/timer';
+// In-game timer overlay: shows the running timer and lets you pause / resume it. For an amount
+// (routine amount item) it shows how many to do and a done button.
+import { displayMs, elapsedMs, fmtClock, fmtCount, isCount, isCountUp, isRunning, type TimerState } from '../shared/timer';
 
 const $ = (id: string) => document.getElementById(id)!;
 const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -14,6 +15,23 @@ function render() {
     return;
   }
   pill.classList.remove('hidden');
+  const count = isCount(timer);
+  pill.classList.toggle('count', count);
+  $('toggle').classList.toggle('hidden', count);
+  if (count) {
+    pill.classList.remove('paused');
+    pill.style.setProperty('--c', timer.color ?? '#3b82f6');
+    $('label').textContent = timer.label;
+    $('time').textContent = fmtCount(timer.amount);
+    const state = $('state');
+    state.textContent = 'PRESS ✓ WHEN DONE';
+    state.classList.add('sw');
+    state.classList.remove('hidden');
+    ($('bar') as HTMLDivElement).style.width = '0%';
+    $('done').title = 'Done: tick it off (and start the next item)';
+    $('done').setAttribute('aria-label', 'Done: tick it off');
+    return;
+  }
   const running = isRunning(timer);
   pill.classList.toggle('paused', !running);
   pill.style.setProperty('--c', timer.color ?? '#3b82f6');
@@ -29,6 +47,7 @@ function render() {
   ($('bar') as HTMLDivElement).style.width = `${pct}%`;
   ($('bar') as HTMLDivElement).style.opacity = up ? '0.35' : '1';
   $('done').title = up ? 'Stop and log the time' : 'Finish now and log the time so far';
+  $('done').setAttribute('aria-label', 'Stop and log the time');
   const btn = $('toggle');
   const icon = running ? PAUSE : PLAY;
   if (btn.innerHTML !== icon) btn.innerHTML = icon;

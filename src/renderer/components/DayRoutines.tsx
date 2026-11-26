@@ -1,6 +1,6 @@
 // Routines started on a day: tick items off, run their timers one after another.
 import { useState } from 'react';
-import { Check, ListChecks, Pause, PenLine, Play, Plus, Repeat, Timer, Trash2, Watch } from 'lucide-react';
+import { Check, ListChecks, MonitorUp, Pause, PenLine, Play, Plus, Repeat, Timer, Trash2, Watch } from 'lucide-react';
 import { useStore } from '../store';
 import {
   activityById,
@@ -24,7 +24,7 @@ import {
 import { fmtMinutes } from '../lib/format';
 import { afterRoutineAdded, startRoutineItemTimer } from '../lib/routineTimer';
 import { confirmDialog, Modal, NumberInput } from './ui';
-import { displayMs, fmtClock, isRunning } from '../../shared/timer';
+import { displayMs, fmtClock, isCount, isRunning } from '../../shared/timer';
 import { useTick } from './TimerPill';
 import type { Day, DayRoutine, DayRoutineItem, Season } from '../../shared/model';
 import type { RoutineItemState } from '../lib/journal';
@@ -89,6 +89,11 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
   const ref = (itemId: string) => ({ seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId });
 
   const toggleItem = (itemId: string, done: boolean | undefined) => {
+    // An amount on the overlay: ticking it is the same as pressing done there (auto-next goes on from it).
+    if (runningHere?.routine?.itemId === itemId && isCount(runningHere) && !done) {
+      void window.rlj.timerControl('finish');
+      return;
+    }
     if (runningHere?.routine?.itemId === itemId && !done) {
       toast({ kind: 'info', title: 'Its timer is running', body: 'Finish it from the timer, or cancel the timer first.' });
       return;
@@ -196,10 +201,20 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
                   </button>
                 </div>
               ) : (
-                <div className="ri-time">{live ? <span className="live-clock">{fmtClock(displayMs(live))}</span> : <ItemValue item={item} st={st} />}</div>
+                <div className="ri-time">{live && !isCount(live) ? <span className="live-clock">{fmtClock(displayMs(live))}</span> : <ItemValue item={item} st={st} />}</div>
+              )}
+              {!st.done && kind === 'amount' && !live && !isLogging && (
+                <button
+                  className="icon-btn"
+                  title="Show it on the in-game overlay with a done button (press ✓ there or the done shortcut)"
+                  aria-label="Show on the overlay"
+                  onClick={() => startRoutineItemTimer(ref(item.id))}
+                >
+                  <MonitorUp size={15} />
+                </button>
               )}
               {!st.done &&
-                (live ? (
+                (live && !isCount(live) ? (
                   <button className="icon-btn" title={isRunning(live) ? 'Pause' : 'Resume'} onClick={() => window.rlj.timerControl('toggle')}>
                     {isRunning(live) ? <Pause size={15} /> : <Play size={15} />}
                   </button>

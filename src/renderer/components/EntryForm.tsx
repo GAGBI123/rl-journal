@@ -21,6 +21,8 @@ import { compareEntry } from '../lib/compare';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import type { Day, Entry, Measure, Season } from '../../shared/model';
 import { shortcutLabel } from '../lib/shortcut';
+import { isCount } from '../../shared/timer';
+import { replaceTimerQuestion, timerNoun } from './TimerPill';
 
 let lastSectionId: string | null = null;
 
@@ -212,11 +214,7 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
     if (!section || measure !== 'time' || !hasActivity) return;
     if (mode === 'down' && !valid) return;
     if (activeTimer) {
-      const ok = await confirmDialog({
-        title: `Replace the running ${activeTimer.mode === 'up' ? 'stopwatch' : 'timer'}?`,
-        body: `The ${activeTimer.mode === 'up' ? 'stopwatch' : 'timer'} for ${activeTimer.activityName} stops without being logged.`,
-        confirmLabel: 'Start new timer',
-      });
+      const ok = await confirmDialog({ ...replaceTimerQuestion(activeTimer), confirmLabel: 'Start new timer' });
       if (!ok) return;
     }
     let actId = activityId ?? '';
@@ -511,7 +509,9 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       )}
       {canTime && activeTimer && (
         <div className="tiny muted">
-          A {activeTimer.mode === 'up' ? 'stopwatch' : 'timer'} is running for {activeTimer.activityName}. Starting a new one replaces it.
+          {isCount(activeTimer)
+            ? `${activeTimer.activityName} is on the overlay. Starting a timer takes it off.`
+            : `A ${timerNoun(activeTimer)} is running for ${activeTimer.activityName}. Starting a new one replaces it.`}
         </div>
       )}
     </div>

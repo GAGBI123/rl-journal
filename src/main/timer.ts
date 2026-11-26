@@ -5,6 +5,7 @@ import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   earlyMinutes,
+  isCount,
   isCountUp,
   isRunning,
   pauseTimer,
@@ -53,13 +54,13 @@ export class TimerService {
     const now = Date.now();
     this.timer = {
       ...input,
-      durationMs: input.mode === 'up' ? 0 : Math.max(1000, Math.round(input.durationMs)),
+      durationMs: input.mode === 'up' || input.mode === 'count' ? 0 : Math.max(1000, Math.round(input.durationMs)),
       id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       startedAt: now,
       accumulatedMs: 0,
       createdAt: now,
     };
-    log('timer started', { activity: input.activityName, mode: input.mode ?? 'down', minutes: Math.round(input.durationMs / 60000) });
+    log('timer started', { activity: input.activityName, mode: input.mode ?? 'down', ...(input.mode === 'count' ? { amount: input.amount } : { minutes: Math.round(input.durationMs / 60000) }) });
     this.changed();
     return this.timer;
   }
@@ -72,6 +73,8 @@ export class TimerService {
     }
     const now = Date.now();
     if (action !== 'cancel') log('timer', action, { source, running: isRunning(t) });
+    // A count has no clock: pausing does nothing, done ticks it off.
+    if (isCount(t) && (action === 'pause' || action === 'resume' || action === 'toggle')) return t;
     switch (action) {
       case 'pause':
         this.timer = pauseTimer(t, now);
@@ -83,6 +86,12 @@ export class TimerService {
         this.timer = isRunning(t) ? pauseTimer(t, now) : resumeTimer(t, now);
         break;
       case 'finish': {
+        if (isCount(t)) {
+          this.timer = null;
+          this.changed();
+          this.events.onComplete({ timer: t, minutes: 0, early: false });
+          return null;
+        }
         // Stop now and log the time done so far.
         const minutes = earlyMinutes(t, now);
         this.timer = null;
@@ -119,7 +128,7 @@ export class TimerService {
     if (this.endTimeout) clearTimeout(this.endTimeout);
     this.endTimeout = null;
     const t = this.timer;
-    if (!t || !isRunning(t) || isCountUp(t)) return; // a stopwatch only ends when you stop it
+    if (!t || !isRunning(t) || isCountUp(t) || isCount(t)) return; // a stopwatch or a count only ends when you stop it
     const left = remainingMs(t);
     if (left <= 0) return this.complete();
     // Timers can drift over long waits; re-check at most every minute.
