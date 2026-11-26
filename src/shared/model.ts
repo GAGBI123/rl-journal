@@ -51,8 +51,11 @@ export interface Entry {
   /** Optional description of what was done (e.g. "aerials, flicks"). */
   note?: string;
   createdAt: string;
-  /** Set when (part of) the entry was added by the live game connection. */
-  auto?: { source: 'game'; accountId?: string };
+  /**
+   * Set when (part of) the entry was added by the live game connection. Each account's games get
+   * their own entry (accountId); `merged` = games from all accounts go into this one entry.
+   */
+  auto?: { source: 'game'; accountId?: string; merged?: boolean };
 }
 
 export interface Day {
@@ -200,6 +203,10 @@ export interface Settings {
   liveGameEnabled: boolean;
   liveGamePort: number;
   ignorePrivateMatches: boolean;
+  /** Private / third-party matches count in your wins and losses (off: they're logged as games only). */
+  privateInRecord: boolean;
+  /** Games from different accounts get their own entry on a day (off: one entry per mode, like before 1.8). */
+  splitAccounts: boolean;
   /** Record wins and losses for auto-logged games (all modes except Honor Duel). */
   trackResultsGames: boolean;
   /** Record wins and losses for auto-logged Honor Duels. */
@@ -223,6 +230,8 @@ export interface Settings {
   timerSound: boolean;
   /** Day page: the tracked matches card is open (remembered when the user opens or closes it). */
   dayMatchesOpen: boolean;
+  /** Day page: how the tracked matches are sorted. */
+  dayMatchesSort: MatchSort;
   /**
    * Days end when the user presses "End day" (default), not at midnight: games keep going to the
    * current day, so a session past midnight counts for the day it started.
@@ -249,6 +258,9 @@ export interface Settings {
 }
 
 export type ThemeId = 'aurora' | 'classic';
+
+/** Orders for the tracked matches on the day page (newest first within each group). */
+export type MatchSort = 'recent' | 'oldest' | 'mode' | 'account' | 'result' | 'points';
 
 /** Colors the user can change in Settings → Appearance. */
 export type ColorKey = 'accent' | 'accent2' | 'background' | 'surface' | 'text' | 'win' | 'loss';

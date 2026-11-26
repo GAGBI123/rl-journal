@@ -5,7 +5,7 @@ import { confirmDialog, EmptyState, Field, Modal, NumberInput, Toggle } from '..
 import { formatDate } from '../lib/dates';
 import { accountForPlayer } from '../lib/sync';
 import { uid } from '../lib/format';
-import { SECTION_COLORS, seasonLabel } from '../lib/journal';
+import { matchInRecord, SECTION_COLORS, seasonLabel } from '../lib/journal';
 import { playlistInfo } from '../../shared/playlists';
 import type { Account } from '../../shared/model';
 import type { StatsApiStatus } from '../env';
@@ -329,8 +329,10 @@ function AccountCard({ account, onEdit }: { account: Account; onEdit: () => void
         d.accounts = d.accounts.filter((a) => a.id !== account.id);
       });
   };
-  const wins = matches.filter((m) => m.result === 'win').length;
-  const losses = matches.filter((m) => m.result === 'loss').length;
+  const data = useStore((s) => s.data);
+  const counted = matches.filter((m) => matchInRecord(data, m));
+  const wins = counted.filter((m) => m.result === 'win').length;
+  const losses = counted.filter((m) => m.result === 'loss').length;
   const platform = PLATFORM_LABEL[account.platform] ?? '';
   return (
     <div className="card account-card">

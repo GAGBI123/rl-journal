@@ -1298,7 +1298,8 @@ select.input option {
 
 .day-layout {
   display: grid;
-  grid-template-columns: minmax(380px, 460px) 1fr;
+  /* minmax(0, …): wide content (the matches table) scrolls in its card instead of squeezing the form. */
+  grid-template-columns: minmax(380px, 460px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -2419,12 +2420,19 @@ textarea.input.desc {
   }
 }
 
-/* ---- 1.5: tracked matches card on the day page opens and closes ---- */
+/* ---- 1.5: tracked matches card on the day page opens and closes (1.8: + sort menu) ---- */
 .matches-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
+}
+
+.matches-toggle,
+.matches-chev {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 0;
   border: 0;
   background: none;
@@ -2432,6 +2440,19 @@ textarea.input.desc {
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.matches-toggle {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+}
+
+.matches-chev {
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  border-radius: 8px;
 }
 
 .matches-card.open .matches-head {
@@ -2450,7 +2471,8 @@ textarea.input.desc {
   transition: transform 0.15s ease;
 }
 
-.matches-head:hover .chev {
+.matches-toggle:hover ~ .matches-chev .chev,
+.matches-chev:hover .chev {
   color: var(--text);
 }
 
@@ -3089,12 +3111,17 @@ textarea.input.desc {
 .matches-card table.table th,
 .matches-card table.table td {
   white-space: nowrap;
-  padding-left: 8px;
-  padding-right: 8px;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
+/* The mode stays on one line; only a "Didn't start?" badge may go below it. */
 .matches-card table.table td:first-child {
   white-space: normal;
+}
+
+.matches-card table.table td .m-mode {
+  white-space: nowrap;
 }
 
 table.table td.m-actions {
@@ -3127,4 +3154,441 @@ table.table td.m-actions .icon-btn:hover {
   color: var(--warn);
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);
   background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+
+/* ------------------------------------------------------------- 1.8: sort menu */
+
+.sort-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.sort-btn {
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+.sort-btn .sort-chev {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.sort-menu.open .sort-btn {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.sort-menu.open .sort-chev {
+  transform: rotate(180deg);
+}
+
+.sort-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 270px;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sort-pop button {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sort-pop button:hover,
+.sort-pop button:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  outline: none;
+}
+
+.sort-pop button.on {
+  color: var(--text);
+}
+
+.sort-check {
+  width: 14px;
+  flex: 0 0 14px;
+  padding-top: 2px;
+  color: var(--blue);
+}
+
+.sort-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sort-text b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sort-text small {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------------- 1.8: games per account */
+
+.acct-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--acct, var(--muted));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--acct, transparent) 60%, transparent);
+}
+
+.badge.acct-badge {
+  height: 19px;
+  font-size: 10.5px;
+}
+
+.badge.acct-badge.tinted {
+  color: color-mix(in srgb, var(--acct) 55%, var(--text));
+  border-color: color-mix(in srgb, var(--acct) 45%, transparent);
+  background: color-mix(in srgb, var(--acct) 14%, transparent);
+}
+
+button.badge.acct-badge {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.badge.acct-badge:disabled {
+  cursor: default;
+}
+
+button.badge.acct-badge:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--blue) 60%, transparent);
+  color: var(--text);
+}
+
+.badge.acct-badge .chev {
+  transition: transform 0.15s ease;
+}
+
+.badge.acct-badge[aria-expanded='true'] .chev {
+  transform: rotate(180deg);
+}
+
+.entry-row.parts-open {
+  align-items: flex-start;
+}
+
+.entry-row.parts-open .e-value,
+.entry-row.parts-open .e-actions {
+  align-self: center;
+}
+
+.acct-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  min-width: 230px;
+}
+
+.acct-part {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.acct-part .acct-name {
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.acct-part .acct-n {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.acct-part.hand .acct-name {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.acct-part.hand .acct-dot {
+  background: transparent;
+  border: 1px solid var(--muted);
+  box-shadow: none;
+}
+
+/* Tracked matches: account dots + legend, and group rows */
+.m-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: -2px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.m-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.m-legend .muted {
+  font-weight: 500;
+}
+
+table.table td .acct-dot.m-acct {
+  margin-right: 7px;
+  vertical-align: 1px;
+}
+
+table.table tr.m-group td {
+  padding-top: 12px;
+  padding-bottom: 5px;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  color: var(--text-2);
+  border-bottom-color: var(--border-strong);
+  background: none;
+}
+
+table.table tr.m-group td .acct-dot {
+  margin-right: 6px;
+}
+
+table.table tr.m-group .m-group-wl {
+  margin-left: 10px;
+}
+
+table.table tr.m-group:hover td {
+  background: none;
+}
+
+.m-table-wrap {
+  overflow-x: auto;
+}
+
+.m-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.m-result .m-score {
+  margin-left: 4px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+td.muted .m-result .m-score {
+  color: inherit;
+}
+
+/* ------------------------------------------------------------- 1.8: end-of-season recap */
+
+.recap {
+  margin-bottom: 6px;
+}
+
+.recap-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recap-head h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.recap-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+
+.recap-hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recap-hero .card {
+  padding: 14px 16px;
+}
+
+.recap-hero .k {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recap-hero .v {
+  margin: 2px 0 3px;
+}
+
+.recap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.recap-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 16px 18px;
+}
+
+.recap-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.recap-row {
+  display: grid;
+  grid-template-columns: 96px 1fr 52px minmax(96px, auto);
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+/* Rows without a W/L column (training times): wider name and value. */
+.recap-row.plain {
+  grid-template-columns: 130px 1fr auto;
+}
+
+.recap-row .r-label {
+  color: var(--text-2);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recap-row .r-track {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.recap-row .r-fill {
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+}
+
+.recap-row .r-val {
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.recap-row .r-extra {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.recap-wl {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.recap-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.recap-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.recap-facts .fact {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.recap-facts .fact.wide {
+  grid-column: 1 / -1;
+}
+
+.recap-facts button.fact {
+  cursor: pointer;
+}
+
+.recap-facts button.fact:hover {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.recap-facts .fact span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.recap-facts .fact b {
+  font-size: 17px;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.recap-facts .fact small {
+  font-size: 11.5px;
+  color: var(--text-2);
 }

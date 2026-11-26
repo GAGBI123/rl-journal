@@ -46,15 +46,18 @@ Your journal is never replaced, not by updates and not by running the installer 
 - Add a season and its dates are filled in from the **Rocket League season calendar**: the current season first, and if you already have it, the seasons before it (start date and length). Custom dates work too. A season that's already over is added as completed.
 - Add days with the **+** after the last day. Only the last day can be removed, and clearing a day empties it without removing it.
 - Close a season when it's over: the remaining days are removed and it's marked as completed on the home screen.
+- A completed season opens with its **season recap**: training time, games and win rate, ranked 1v1 / 2v2 / 3v3 games with wins and losses, casual, Honor Duels and other modes, what you trained most, your best training day, most games in a day, longest streak, goals / assists / saves per game, shooting %, best match and games per account.
+- **Export a season as a text file** (**Export .txt** on the season), or every season at once, one file each (**Settings → Your data → Export seasons as text**). Each day is written out like a Notepad training log (what you trained and for how long, total training time, 1vs1 / 2vs2 / 3vs3 matches), with the season's totals at the end.
 - **You end your days.** A day lasts until you press **End day** (in the sidebar or on the day), so a session that goes past midnight still counts for the day it started. Ended one by mistake? **Reopen day**. Prefer a new day at midnight? Turn off **End days yourself** in Settings.
 
 ### Daily log
 - Pick a **section** (Training, Games, or your own), then **what you did**, then **time** (in minutes) or **amount**. Totals show as days, hours and minutes (e.g. *1d 4h 20m*).
 - Put **sections inside sections**. For example, add *Freeplay* inside Training and log *Overall*, *Flicks* or *Air dribbles* inside it. You'll see your total Freeplay time and the time for each part. An activity you've already been logging can be turned into a section, and what you logged moves to *Overall*.
 - Add an optional **description**, like *"aerials, flicks, air dribbles"*.
-- Logging the same thing twice in a day adds to that day's total instead of creating a second entry.
+- Logging the same thing twice in a day adds to that day's total instead of creating a second entry. Games from **different accounts** get their own entry (e.g. *Ranked 2s · Main* and *Ranked 2s · Alt*); **Merge** puts them together, and clicking the accounts badge shows how many games each account played. Prefer them together all the time? Turn off **Keep each account's games apart** in Settings.
 - Logged something on the wrong day? **Move** it (the arrows next to an entry) to any other day, all of it or just part: some of the minutes, or pick which games go (for example the ones after midnight).
 - Don't want to see your wins and losses on a day? **Hide record** on that day hides them (saved per day).
+- **Sort the tracked matches** of a day: most recent, oldest first, by game mode (Ranked 1s, 2s, 3s, then casual, then Honor Duels and private matches), by account, by result or by most points. Games from different accounts have their account's color.
 - A tracked game that shouldn't be there (not yours, cancelled, …)? Delete it from the day's **Tracked matches** list: the game and its win or loss come off that day's count too. Games with no touches, points or goals are marked *Didn't start?* so they're easy to spot.
 - While you type, you see how it compares to **yesterday**, **your average**, the **season average** and your **best day**, including when you set a new personal best.
 - Games start with **Ranked 1s / 2s / 3s**, **Casual 1s / 2s / 3s** and **Honor Duel**. Add your own and put them in any order in Settings.
@@ -82,7 +85,7 @@ RL Journal uses Rocket League's official [Stats API](https://www.rocketleague.co
 - **Honor Duels** are logged separately, with their own wins and losses. Duels you only watch (two others in your lobby) are not logged.
 - It works out which account you're playing on by itself, so it handles **multiple accounts** with no setup. The top bar shows *Game connected · your account*.
 - Freeplay, training, workshop maps and offline games are never logged. **Matches that never got going** (cancelled before kickoff, e.g. because a player didn't join) aren't logged either: no touches, no goals and no time on the clock means no game.
-- Private matches are logged too; turn on **Ignore private matches** in Settings to skip them.
+- Private matches are logged too. In **Settings → Private matches** you can keep them out of your wins, losses and win rates (they still count as games), or not log them at all.
 - Win/loss tracking can be switched off separately for regular games and for Honor Duels.
 - You get a notification for each logged game.
 

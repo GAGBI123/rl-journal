@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BarChart3, Check, CheckCircle2, Dumbbell, Eraser, Flag, Gamepad2, ListChecks, Lock, LockOpen, Pencil, Plus, Trash2, X, Swords } from 'lucide-react';
+import { BarChart3, Check, CheckCircle2, Dumbbell, Eraser, FileText, Flag, Gamepad2, ListChecks, Lock, LockOpen, Pencil, Plus, Trash2, X, Swords } from 'lucide-react';
 import { useStore } from '../store';
 import { addOneDay, clearDay, currentDate, dayNumber, findSeason, removeLastDay, seasonEndDate, seasonLabel } from '../lib/journal';
 import { daySummary } from '../lib/stats';
@@ -7,6 +7,8 @@ import { addDays, formatDate } from '../lib/dates';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import { CloseSeasonModal, EditSeasonModal } from '../components/SeasonModals';
 import { confirmDialog, EmptyState } from '../components/ui';
+import { SeasonRecap } from '../components/SeasonRecap';
+import { seasonFileName, seasonText } from '../lib/textExport';
 import type { Day } from '../../shared/model';
 
 export function SeasonPage({ seasonId }: { seasonId: string }) {
@@ -132,6 +134,11 @@ export function SeasonPage({ seasonId }: { seasonId: string }) {
       }
     });
 
+  const exportText = async () => {
+    const res = await window.rlj.exportTexts([{ name: seasonFileName(season), content: seasonText(data, season) }]);
+    if (res) toast({ kind: 'success', title: `${seasonLabel(season)} exported`, body: 'Saved as a text file (opens in Notepad).' });
+  };
+
   const toggleSel = (id: string) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -176,6 +183,9 @@ export function SeasonPage({ seasonId }: { seasonId: string }) {
           <button className="btn" onClick={() => navigate({ name: 'stats', seasonId: season.id })}>
             <BarChart3 size={15} /> Stats
           </button>
+          <button className="btn" onClick={exportText} title="Save this season as a text file: every day, then the season's totals">
+            <FileText size={15} /> Export .txt
+          </button>
           {season.status === 'active' ? (
             <button className="btn orange" onClick={() => setModal('close')}>
               <Lock size={15} /> Close season
@@ -194,27 +204,31 @@ export function SeasonPage({ seasonId }: { seasonId: string }) {
         </div>
       </div>
 
-      <div className="summary-strip">
-        <div className="card kv">
-          <div className="k">Training time</div>
-          <div className="v">{fmtMinutes(totals.training)}</div>
-        </div>
-        <div className="card kv">
-          <div className="k">Games played</div>
-          <div className="v">{fmtNum(totals.games)}</div>
-        </div>
-        <div className="card kv">
-          <div className="k">Active days</div>
-          <div className="v">
-            {totals.active}
-            <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}> / {elapsed || season.days.length}</span>
+      {season.status === 'closed' && <SeasonRecap season={season} />}
+
+      {season.status === 'active' && (
+        <div className="summary-strip">
+          <div className="card kv">
+            <div className="k">Training time</div>
+            <div className="v">{fmtMinutes(totals.training)}</div>
+          </div>
+          <div className="card kv">
+            <div className="k">Games played</div>
+            <div className="v">{fmtNum(totals.games)}</div>
+          </div>
+          <div className="card kv">
+            <div className="k">Active days</div>
+            <div className="v">
+              {totals.active}
+              <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}> / {elapsed || season.days.length}</span>
+            </div>
+          </div>
+          <div className="card kv">
+            <div className="k">Daily avg training</div>
+            <div className="v">{fmtMinutes(totals.training / Math.max(1, elapsed))}</div>
           </div>
         </div>
-        <div className="card kv">
-          <div className="k">Daily avg training</div>
-          <div className="v">{fmtMinutes(totals.training / Math.max(1, elapsed))}</div>
-        </div>
-      </div>
+      )}
 
       <div className="section-title">
         <h2>Days</h2>

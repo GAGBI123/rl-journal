@@ -104,3 +104,24 @@ export function keyForLegacyName(name: string): string | undefined {
   const known = Object.values(P).find((p) => p.kind === 'match' && p.mode.toLowerCase() === n);
   return known?.key;
 }
+
+/** Keys of private / third-party matches (6 = private match, 26 = external match). */
+export const PRIVATE_KEYS = new Set(['private', 'external']);
+
+const MODE_ORDER = ['ranked-1s', 'ranked-2s', 'ranked-3s', '*ranked', 'casual-1s', 'casual-2s', 'casual-3s', 'casual-chaos', '*other', HONOR_DUEL_KEY, '*private'];
+
+/**
+ * Where a game mode goes when games are sorted by mode: Ranked 1s, 2s, 3s, the other ranked modes,
+ * Casual 1s, 2s, 3s, Chaos, the other modes (extra modes, events), Honor Duel, private matches,
+ * and anything unknown last.
+ */
+export function modeRank(key: string | undefined): number {
+  if (!key) return MODE_ORDER.length;
+  const i = MODE_ORDER.indexOf(key);
+  if (i >= 0) return i;
+  if (PRIVATE_KEYS.has(key)) return MODE_ORDER.indexOf('*private');
+  const info = Object.values(P).find((p) => p.key === key);
+  if (info?.kind === 'practice' || key === 'unknown') return MODE_ORDER.length;
+  if (info?.ranked || key.startsWith('ranked-')) return MODE_ORDER.indexOf('*ranked');
+  return MODE_ORDER.indexOf('*other');
+}

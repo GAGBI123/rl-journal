@@ -169,7 +169,7 @@ export function applyLiveMatch(data: AppData, result: LiveMatchResult): SyncOutc
     amount: 1,
     ...(trackResults ? { wins: outcome === 'win' ? 1 : 0, losses: outcome === 'loss' ? 1 : 0 } : {}),
     auto: { source: 'game', accountId: account?.id },
-  });
+  }, settings.splitAccounts);
 
   data.matches.push({
     id: uid(),

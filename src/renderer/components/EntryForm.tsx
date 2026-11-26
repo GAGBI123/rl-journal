@@ -8,7 +8,7 @@ import {
   addToDay,
   childSections,
   createSection,
-  findDayEntry,
+  entryTarget,
   findOrCreateActivity,
   findSeason,
   mergeInto,
@@ -130,7 +130,7 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   const hasActivity = (activityId && !creating) || (creating && newName.trim().length > 0);
   const valid = !!hasActivity && base > 0 && !winsInvalid;
   // Adding the same activity twice on a day goes into one entry.
-  const existing = !editing && activityId && !creating ? findDayEntry(day, activityId, measure) : undefined;
+  const existing = !editing && activityId && !creating ? entryTarget(day, { activityId, measure }) : undefined;
 
   const cmp = useMemo(() => {
     if (!activityId || creating) return null;
@@ -173,9 +173,10 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
           : { measure, amount: num, minutes: undefined, ...results };
       const desc = note.trim() || undefined;
       if (old) {
+        const switched = old.activityId !== activity.id || old.measure !== measure;
         Object.assign(old, fields, { activityId: activity.id, note: desc });
         // Switched to an activity that is already logged today: combine the two.
-        const twin = findDayEntry(target, activity.id, measure, old.id);
+        const twin = switched ? entryTarget(target, old, d.settings.splitAccounts, old.id) : undefined;
         if (twin) {
           mergeInto(twin, old);
           target.entries = target.entries.filter((x) => x.id !== old.id);

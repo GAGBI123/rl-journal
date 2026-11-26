@@ -7,6 +7,8 @@ import {
   type DayRoutine,
   type DayRoutineItem,
   type Entry,
+  type MatchRecord,
+  type MatchSort,
   type Measure,
   type Routine,
   type RoutineItem,
@@ -15,7 +17,7 @@ import {
   type Section,
   type Settings,
 } from '../../shared/model';
-import { DEFAULT_GAME_MODES, HONOR_DUEL_KEY, keyForLegacyName, playlistInfo, PRACTICE_MODE_NAMES } from '../../shared/playlists';
+import { DEFAULT_GAME_MODES, HONOR_DUEL_KEY, keyForLegacyName, playlistInfo, PRACTICE_MODE_NAMES, PRIVATE_KEYS } from '../../shared/playlists';
 import { addDays, diffDays, todayISO } from './dates';
 import { fmtMinutes, fmtNum, uid } from './format';
 
@@ -26,6 +28,8 @@ export const DEFAULT_SETTINGS: Settings = {
   liveGameEnabled: true,
   liveGamePort: 49124,
   ignorePrivateMatches: false,
+  privateInRecord: true,
+  splitAccounts: true,
   trackResultsGames: true,
   trackResultsHonorDuel: true,
   systemNotifications: true,
@@ -39,6 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timerFinishHotkey: 'Control+Alt+O',
   timerSound: true,
   dayMatchesOpen: true,
+  dayMatchesSort: 'recent',
   endDayManually: true,
   theme: 'aurora',
   settingsRev: 2,
@@ -49,6 +54,7 @@ const SETTINGS_REV = 2;
 /** When 1.7.0 came out. Its game scores counted goals again when a goal replay showed them. */
 const V170_RELEASED = '2026-11-26T00:20:00.000Z';
 const THEMES = new Set(['aurora', 'classic']);
+const MATCH_SORTS = new Set<MatchSort>(['recent', 'oldest', 'mode', 'account', 'result', 'points']);
 const COLOR_KEYS = new Set(['accent', 'accent2', 'background', 'surface', 'text', 'win', 'loss']);
 
 /** Settings keys from older versions that no longer exist. */
@@ -142,6 +148,7 @@ export function normalizeData(raw: any): AppData {
   }
   data.settings.settingsRev = Math.max(rev, SETTINGS_REV);
   if (!THEMES.has(data.settings.theme)) data.settings.theme = DEFAULT_SETTINGS.theme;
+  if (!MATCH_SORTS.has(data.settings.dayMatchesSort)) data.settings.dayMatchesSort = DEFAULT_SETTINGS.dayMatchesSort;
   const colors = data.settings.customColors;
   if (colors && typeof colors === 'object') {
     const clean = Object.fromEntries(Object.entries(colors).filter(([k, v]) => COLOR_KEYS.has(k) && typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)));
@@ -208,7 +215,26 @@ export function normalizeData(raw: any): AppData {
   }
   if (fromVersion < 2) migrateToV2(data);
   ensureActivityOrder(data);
+  markMergedEntries(data);
   return data;
+}
+
+/**
+ * 1.8: each account's games get their own entry. Entries from before that already hold games from
+ * several accounts are marked as merged, so they stay one entry (and later games that day join them).
+ */
+function markMergedEntries(data: AppData) {
+  const accounts = new Map<string, Set<string>>();
+  for (const m of data.matches) {
+    if (!m?.entryId || !m.accountId) continue;
+    const set = accounts.get(m.entryId) ?? new Set<string>();
+    set.add(m.accountId);
+    accounts.set(m.entryId, set);
+  }
+  for (const { entry } of allEntries(data)) {
+    if (!entry.auto || entry.auto.merged) continue;
+    if ((accounts.get(entry.id)?.size ?? 0) > 1) entry.auto = { source: 'game', merged: true };
+  }
 }
 
 function allEntries(data: AppData) {
@@ -747,8 +773,15 @@ export function mergeInto(target: Entry, add: EntryInput | Entry) {
   const notes = [target.note, add.note].map((n) => n?.trim()).filter((n): n is string => !!n);
   target.note = notes.length ? [...new Set(notes)].join('\n') : undefined;
   if (add.auto) {
-    if (!target.auto) target.auto = { source: 'game', accountId: add.auto.accountId };
-    else if (target.auto.accountId !== add.auto.accountId) target.auto = { source: 'game' };
+    const t = target.auto;
+    const merged = { source: 'game' as const, merged: true };
+    if (!t) target.auto = add.auto.merged ? merged : { source: 'game', accountId: add.auto.accountId };
+    else if (t.merged) return;
+    else if (add.auto.merged) target.auto = merged;
+    // Games with no known account join whatever is there; an entry of only those is taken by the first account.
+    else if (!add.auto.accountId) return;
+    else if (!t.accountId) target.auto = { source: 'game', accountId: add.auto.accountId };
+    else if (t.accountId !== add.auto.accountId) target.auto = merged;
   }
 }
 
@@ -757,16 +790,152 @@ export function findDayEntry(day: Day, activityId: string, measure: Measure, exc
   return day.entries.find((e) => e.id !== excludeId && e.activityId === activityId && e.measure === measure);
 }
 
-/** Add to the day's existing entry for the same activity and measure, or create a new one. */
-export function addToDay(day: Day, input: EntryInput): { entry: Entry; merged: boolean } {
-  const target = findDayEntry(day, input.activityId, input.measure);
+/** The day's entries for an activity + measure (one per account when games from different accounts are kept apart). */
+export function dayEntriesOf(day: Day, activityId: string, measure: Measure, excludeId?: string) {
+  return day.entries.filter((e) => e.id !== excludeId && e.activityId === activityId && e.measure === measure);
+}
+
+/** The day's total for an activity + measure, over all its entries. */
+export function dayTotal(day: Day, activityId: string, measure: Measure) {
+  return round2(dayEntriesOf(day, activityId, measure).reduce((a, e) => a + entryValue(e, measure), 0));
+}
+
+/**
+ * The day's entry that new values for an activity are added to, if any.
+ * - Games from the live game connection go to their account's entry, or to the entry where every
+ *   account's games are merged. A hand-logged entry (or one with games of no known account) takes the
+ *   games of the first account that plays.
+ *   With `splitAccounts` off, all of an activity's games go into one entry (like before 1.8).
+ * - Values added by hand go to the hand-logged entry, the merged one, or the only entry there is.
+ */
+export function entryTarget(
+  day: Day,
+  input: Pick<EntryInput, 'activityId' | 'measure' | 'auto'>,
+  splitAccounts = true,
+  excludeId?: string,
+): Entry | undefined {
+  const same = dayEntriesOf(day, input.activityId, input.measure, excludeId);
+  const merged = same.find((e) => e.auto?.merged);
+  const hand = same.find((e) => !e.auto);
+  if (!input.auto) return hand ?? merged ?? (same.length === 1 ? same[0] : undefined);
+  if (!splitAccounts || input.auto.merged) return merged ?? same[0];
+  const id = input.auto.accountId;
+  // A game with no known account (the player wasn't detected) joins any game entry.
+  if (!id) return merged ?? same.find((e) => e.auto) ?? hand;
+  return merged ?? same.find((e) => e.auto?.accountId === id) ?? same.find((e) => e.auto && !e.auto.accountId) ?? hand;
+}
+
+/** Add to the day's entry for the same activity (and account, for games), or create a new one next to its others. */
+export function addToDay(day: Day, input: EntryInput, splitAccounts = true): { entry: Entry; merged: boolean } {
+  const target = entryTarget(day, input, splitAccounts);
   if (target) {
     mergeInto(target, input);
     return { entry: target, merged: true };
   }
   const entry = newEntry(input);
-  day.entries.push(entry);
+  const siblings = dayEntriesOf(day, input.activityId, input.measure);
+  if (siblings.length) day.entries.splice(day.entries.indexOf(siblings[siblings.length - 1]) + 1, 0, entry);
+  else day.entries.push(entry);
   return { entry, merged: false };
+}
+
+/** One account's part of a game entry (from its tracked matches). */
+export interface AccountPart {
+  accountId?: string;
+  games: number;
+  wins: number;
+  losses: number;
+}
+
+/** Which accounts an entry's games were played on (tracked matches), and how many were added by hand. */
+export function entryAccountParts(data: AppData, entry: Entry): { parts: AccountPart[]; byHand: number } {
+  const own = data.matches.filter((m) => m.entryId === entry.id);
+  const map = new Map<string, AccountPart>();
+  for (const m of own) {
+    const k = m.accountId ?? '';
+    const p = map.get(k) ?? { accountId: m.accountId, games: 0, wins: 0, losses: 0 };
+    p.games++;
+    if (m.result === 'win') p.wins++;
+    else if (m.result === 'loss') p.losses++;
+    map.set(k, p);
+  }
+  const order = new Map(data.accounts.map((a, i) => [a.id, i]));
+  const rank = (p: AccountPart) => (p.accountId ? order.get(p.accountId) ?? 999 : 1000);
+  const parts = [...map.values()].sort((a, b) => rank(a) - rank(b));
+  const byHand = entry.measure === 'amount' ? Math.max(0, (entry.amount ?? 0) - own.length) : 0;
+  return { parts, byHand };
+}
+
+/**
+ * Put all of a day's entries for an activity (e.g. one per account) into one entry. Games played on
+ * any account later that day join it. Returns the merged entry.
+ */
+export function mergeAccountEntries(data: AppData, seasonId: string, dayId: string, entryId: string): Entry | null {
+  const day = findDay(data, seasonId, dayId);
+  const entry = day?.entries.find((e) => e.id === entryId);
+  if (!day || !entry) return null;
+  const same = dayEntriesOf(day, entry.activityId, entry.measure);
+  if (same.length < 2) return null;
+  const [target, ...rest] = same;
+  for (const e of rest) {
+    mergeInto(target, e);
+    for (const m of data.matches) if (m.entryId === e.id) m.entryId = target.id;
+  }
+  day.entries = day.entries.filter((e) => !rest.includes(e));
+  if (target.auto) target.auto = { source: 'game', merged: true };
+  return target;
+}
+
+/**
+ * Give each account's games in an entry their own entry again. The account that played first stays
+ * in this entry, with whatever was added by hand. Returns the entries, this one first.
+ */
+export function splitEntryByAccount(data: AppData, seasonId: string, dayId: string, entryId: string): Entry[] {
+  const day = findDay(data, seasonId, dayId);
+  const entry = day?.entries.find((e) => e.id === entryId);
+  if (!day || !entry || entry.measure !== 'amount' || !entry.auto) return [];
+  const own = data.matches.filter((m) => m.entryId === entry.id).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const groups = new Map<string, MatchRecord[]>();
+  for (const m of own) groups.set(m.accountId ?? '', [...(groups.get(m.accountId ?? '') ?? []), m]);
+  const keys = [...groups.keys()];
+  entry.auto = { source: 'game', accountId: keys[0] || undefined };
+  const results = entry.wins !== undefined || entry.losses !== undefined;
+  const out = [entry];
+  let at = day.entries.indexOf(entry);
+  for (const k of keys.slice(1)) {
+    const list = groups.get(k)!;
+    const wins = list.filter((m) => m.result === 'win').length;
+    const losses = list.filter((m) => m.result === 'loss').length;
+    const e = newEntry({
+      activityId: entry.activityId,
+      measure: 'amount',
+      amount: list.length,
+      ...(results ? { wins, losses } : {}),
+      auto: { source: 'game', accountId: k || undefined },
+    });
+    entry.amount = Math.max(0, (entry.amount ?? 0) - list.length);
+    if (results) {
+      entry.wins = Math.max(0, (entry.wins ?? 0) - wins);
+      entry.losses = Math.max(0, (entry.losses ?? 0) - losses);
+    }
+    for (const m of list) m.entryId = e.id;
+    day.entries.splice(++at, 0, e);
+    out.push(e);
+  }
+  return out;
+}
+
+/** Whether a game mode's wins and losses count in your record (private matches can be left out in Settings). */
+export function inRecord(data: AppData, activityId: string): boolean {
+  if (data.settings.privateInRecord !== false) return true;
+  const key = activityById(data, activityId)?.key;
+  return !key || !PRIVATE_KEYS.has(key);
+}
+
+/** Whether a tracked game's result counts in your record. */
+export function matchInRecord(data: AppData, m: MatchRecord): boolean {
+  if (data.settings.privateInRecord !== false) return true;
+  return playlistInfo(m.playlistId).kind !== 'private' && inRecord(data, m.activityId);
 }
 
 /** What part of an entry to move to another day (all of it when left out). */
@@ -781,7 +950,7 @@ export interface MovePart {
 
 /**
  * Move an entry, or part of it, to another day. It's added to that day's entry for the same
- * activity (one entry per activity per day) and the tracked matches it moves go along.
+ * activity (and account) and the tracked matches it moves go along.
  * Returns the entry it ended up in on the other day.
  */
 export function moveEntry(
@@ -834,8 +1003,13 @@ export function moveEntry(
     input.note = entry.note;
     src.entries = src.entries.filter((e) => e !== entry);
   }
-  if (entry.auto && (whole || moving.length)) input.auto = { ...entry.auto };
-  const { entry: target } = addToDay(dst, input);
+  if (entry.auto && (whole || moving.length)) {
+    input.auto = { ...entry.auto };
+    // Part of a merged entry, all from one account: it goes to that account's entry there.
+    const keys = new Set(moving.map((m) => m.accountId ?? ''));
+    if (!whole && entry.auto.merged && keys.size === 1) input.auto = { source: 'game', accountId: [...keys][0] || undefined };
+  }
+  const { entry: target } = addToDay(dst, input, data.settings.splitAccounts);
   for (const m of moving) {
     m.seasonId = toSeason.id;
     m.dayId = dst.id;
@@ -882,8 +1056,7 @@ export function deleteMatch(data: AppData, matchId: string): boolean {
 function trimRoutineLogs(day: Day, activityId: string, measure: Measure) {
   const items = (day.routines ?? []).flatMap((r) => r.items).filter((i) => i.activityId === activityId && itemMeasure(i) === measure);
   if (!items.length) return;
-  const entry = findDayEntry(day, activityId, measure);
-  let left = entry ? entryValue(entry, measure) : 0;
+  let left = dayTotal(day, activityId, measure);
   for (const i of items) {
     const own = ownLogged(i);
     const keep = Math.min(own, left);
@@ -1032,8 +1205,7 @@ export function routineItemStates(day: Day): Map<string, RoutineItemState> {
   }
   for (const list of byKey.values()) {
     const measure = itemMeasure(list[0]);
-    const entry = findDayEntry(day, list[0].activityId, measure);
-    let left = entry ? entryValue(entry, measure) : 0;
+    let left = dayTotal(day, list[0].activityId, measure);
     for (const i of list) {
       const own = Math.min(left, ownLogged(i));
       progress.set(i.id, own);
@@ -1145,7 +1317,8 @@ export function undoRoutineItem(day: Day, dayRoutineId: string, itemId: string) 
   if (!item || !routineItemState(day, itemId).done) return false;
   const measure = itemMeasure(item);
   const v = ownLogged(item);
-  const entry = findDayEntry(day, item.activityId, measure);
+  // The entry the routine added to (the hand-logged one).
+  const entry = entryTarget(day, { activityId: item.activityId, measure }) ?? findDayEntry(day, item.activityId, measure);
   if (entry && v > 0) {
     if (measure === 'amount') entry.amount = round2(Math.max(0, (entry.amount ?? 0) - v));
     else entry.minutes = round2(Math.max(0, (entry.minutes ?? 0) - v));

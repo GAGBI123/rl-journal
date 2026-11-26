@@ -15,6 +15,8 @@ const api = {
   openDataFolder: () => ipcRenderer.invoke('data:open-folder'),
   exportData: (json: string) => ipcRenderer.invoke('data:export', json),
   importData: () => ipcRenderer.invoke('data:import'),
+  exportTexts: (files: { name: string; content: string }[]) =>
+    ipcRenderer.invoke('export:texts', files) as Promise<{ dir: string; count: number } | null>,
   liveConfigure: (cfg: unknown) => ipcRenderer.invoke('live:configure', cfg),
   liveReady: () => ipcRenderer.invoke('live:ready'),
   onLiveStatus: on('live:status'),

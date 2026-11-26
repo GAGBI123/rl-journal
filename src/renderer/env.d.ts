@@ -18,6 +18,8 @@ declare global {
       dataFolder(): Promise<string>;
       openDataFolder(): Promise<void>;
       exportData(json: string): Promise<boolean>;
+      /** Seasons as text files: one file → save dialog, several → choose a folder. Null when cancelled. */
+      exportTexts(files: { name: string; content: string }[]): Promise<{ dir: string; count: number } | null>;
       importData(): Promise<unknown | null>;
       liveConfigure(cfg: { enabled: boolean; port: number }): Promise<LiveStatus>;
       liveReady(): Promise<LiveStatus>;

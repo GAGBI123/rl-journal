@@ -294,6 +294,37 @@ function registerIpc() {
     return true;
   });
 
+  // Seasons as text files (renderer builds them). One file: save dialog; several: pick a folder.
+  ipcMain.handle('export:texts', async (_e, files: { name: string; content: string }[]) => {
+    if (!Array.isArray(files) || !files.length) return null;
+    const clean = (n: unknown) => {
+      const base = String(n ?? '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().slice(0, 120) || 'RL Journal';
+      return /\.txt$/i.test(base) ? base : `${base}.txt`;
+    };
+    const docs = app.getPath('documents');
+    if (files.length === 1) {
+      const res = await dialog.showSaveDialog(win!, {
+        title: 'Export season as a text file',
+        defaultPath: path.join(docs, clean(files[0].name)),
+        filters: [{ name: 'Text file', extensions: ['txt'] }],
+      });
+      if (res.canceled || !res.filePath) return null;
+      await fs.writeFile(res.filePath, String(files[0].content ?? ''), 'utf8');
+      shell.showItemInFolder(res.filePath);
+      return { dir: path.dirname(res.filePath), count: 1 };
+    }
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Choose a folder for the season text files',
+      defaultPath: docs,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    const dir = res.canceled ? undefined : res.filePaths[0];
+    if (!dir) return null;
+    for (const f of files) await fs.writeFile(path.join(dir, clean(f.name)), String(f.content ?? ''), 'utf8');
+    void shell.openPath(dir);
+    return { dir, count: files.length };
+  });
+
   ipcMain.handle('data:import', async () => {
     const res = await dialog.showOpenDialog(win!, {
       title: 'Import RL Journal backup',

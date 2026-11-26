@@ -2,8 +2,8 @@
 import type { Activity, AppData, Day, Entry, MatchRecord, Measure, Season, Section } from '../../shared/model';
 import { addDays, diffDays, formatDate, todayISO, weekStart, weekdayIndex, WEEKDAYS_LONG } from './dates';
 import { fmtMinutes, fmtNum, fmtPct, plural } from './format';
-import { childSections, descendantSectionIds, isHonorDuel, seasonLabel, sectionActivities, sectionById, sectionLabel, sectionPath, sortedSections } from './journal';
-import { HONOR_DUEL_KEY } from '../../shared/playlists';
+import { childSections, descendantSectionIds, inRecord, isHonorDuel, matchInRecord, seasonLabel, sectionActivities, sectionById, sectionLabel, sectionPath, sortedSections } from './journal';
+import { HONOR_DUEL_KEY, PRIVATE_KEYS } from '../../shared/playlists';
 
 export type Scope = { kind: 'all' } | { kind: 'season'; seasonId: string };
 
@@ -57,11 +57,14 @@ export function buildContext(data: AppData, scope: Scope, today = todayISO()): S
   const secById = new Map(data.sections.map((s) => [s.id, s]));
   const entries: FlatEntry[] = [];
   const dates = new Set<string>();
+  // Private matches can be left out of the record (Settings): they still count as games, without wins and losses.
+  const noRecord = (a?: Activity) => data.settings.privateInRecord === false && !!a?.key && PRIVATE_KEYS.has(a.key);
   for (const season of seasons) {
     for (const day of season.days) {
       if (day.date <= today) dates.add(day.date);
-      for (const entry of day.entries) {
-        const activity = actById.get(entry.activityId);
+      for (const raw of day.entries) {
+        const activity = actById.get(raw.activityId);
+        const entry = noRecord(activity) && raw.measure === 'amount' ? { ...raw, wins: undefined, losses: undefined } : raw;
         entries.push({ entry, date: day.date, season, day, activity, section: activity ? secById.get(activity.sectionId) : undefined });
       }
     }
@@ -74,7 +77,9 @@ export function buildContext(data: AppData, scope: Scope, today = todayISO()): S
     seasons,
     elapsedDates: [...dates].sort(),
     entries,
-    matches: data.matches.filter((m) => seasonIds.has(m.seasonId)),
+    matches: data.matches
+      .filter((m) => seasonIds.has(m.seasonId))
+      .map((m) => (matchInRecord(data, m) ? m : { ...m, result: 'unknown' as const })),
     live: seasons.some((s) => s.status === 'active' && s.days.some((d) => d.date === today)),
   };
 }
@@ -987,7 +992,7 @@ export function daySummary(data: AppData, day: Day) {
     else if (s?.kind === 'games' && e.measure === 'amount') {
       const n = e.amount ?? 0;
       games += n;
-      const known = e.wins !== undefined || e.losses !== undefined;
+      const known = (e.wins !== undefined || e.losses !== undefined) && inRecord(data, e.activityId);
       if (isHonorDuel(a)) {
         honorDuels += n;
         if (known) honor = { wins: honor.wins + (e.wins ?? 0), losses: honor.losses + (e.losses ?? 0), known: true };

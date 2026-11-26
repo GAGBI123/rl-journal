@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Clock, Download, Folder, FolderInput, FolderOpen, FolderPlus, GripVertical, Hash, Plus, RefreshCw, Timer, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Download, FileText, Folder, FolderInput, FolderOpen, FolderPlus, GripVertical, Hash, Plus, RefreshCw, Timer, Trash2, Upload } from 'lucide-react';
 import { useStore } from '../store';
 import { confirmDialog, Field, Modal, Segmented, Toggle } from '../components/ui';
 import {
@@ -23,6 +23,7 @@ import { relativeTime, todayISO } from '../lib/dates';
 import { ShortcutInput } from '../components/ShortcutInput';
 import { AppearanceSettings } from '../components/Appearance';
 import { uid } from '../lib/format';
+import { allSeasonTexts } from '../lib/textExport';
 import type { Measure, Section } from '../../shared/model';
 
 function countEntries(data: ReturnType<typeof useStore.getState>['data'], pred: (activityId: string) => boolean) {
@@ -517,6 +518,16 @@ export function SettingsPage() {
       d.settings[k] = v;
     });
 
+  const exportTexts = async () => {
+    const files = allSeasonTexts(data);
+    if (!files.length) {
+      toast({ kind: 'info', title: 'No seasons to export yet' });
+      return;
+    }
+    const res = await window.rlj.exportTexts(files);
+    if (res) toast({ kind: 'success', title: `${res.count} season${res.count === 1 ? '' : 's'} exported`, body: `One text file per season in ${res.dir}` });
+  };
+
   const exportData = async () => {
     const ok = await window.rlj.exportData(JSON.stringify(data, null, 2));
     if (ok) toast({ kind: 'success', title: 'Backup exported' });
@@ -595,11 +606,44 @@ export function SettingsPage() {
           on={settings.trackResultsHonorDuel}
           onChange={(v) => set('trackResultsHonorDuel', v)}
         />
+        <div className="row between" style={{ padding: '10px 0', alignItems: 'flex-start', gap: 16 }}>
+          <div>
+            <div style={{ fontWeight: 500 }}>Private matches</div>
+            <div className="muted small">
+              {settings.ignorePrivateMatches
+                ? "Private and third-party matches aren't logged at all."
+                : settings.privateInRecord
+                  ? 'Logged like other games, wins and losses included.'
+                  : 'Logged as games, but left out of your wins, losses and win rates (also the ones already logged).'}{' '}
+              Freeplay, training, workshop and offline games are never logged.
+            </div>
+          </div>
+          <div style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+            <Segmented
+              value={settings.ignorePrivateMatches ? 'skip' : settings.privateInRecord ? 'record' : 'games'}
+              onChange={(v) =>
+                mutate((d) => {
+                  d.settings.ignorePrivateMatches = v === 'skip';
+                  d.settings.privateInRecord = v !== 'games';
+                })
+              }
+              options={[
+                { value: 'record', label: 'In record' },
+                { value: 'games', label: 'Not in record' },
+                { value: 'skip', label: "Don't log" },
+              ]}
+            />
+          </div>
+        </div>
         <Toggle
-          title="Ignore private matches"
-          desc="Off (default): private and third-party matches are logged like other games. On: they're skipped. Freeplay, training, workshop and offline games are never logged."
-          on={settings.ignorePrivateMatches}
-          onChange={(v) => set('ignorePrivateMatches', v)}
+          title="Keep each account's games apart"
+          desc={
+            settings.splitAccounts
+              ? "Games you play on different accounts get their own entry on the day (e.g. Ranked 2s · Main and Ranked 2s · Alt). Merge them on the day page to see them together; you can still open them to see each account's games."
+              : "Off: games of the same mode go into one entry, whatever account they're on. Open it on the day page to see each account's games."
+          }
+          on={settings.splitAccounts}
+          onChange={(v) => set('splitAccounts', v)}
         />
       </div>
 
@@ -682,6 +726,9 @@ export function SettingsPage() {
           </button>
           <button className="btn" onClick={importData}>
             <Upload size={15} /> Import backup
+          </button>
+          <button className="btn" onClick={exportTexts} title="One text file per season (opens in Notepad): every day, then the season's totals">
+            <FileText size={15} /> Export seasons as text
           </button>
           <button className="btn ghost" onClick={() => window.rlj.openDataFolder()}>
             <FolderOpen size={15} /> Open data folder

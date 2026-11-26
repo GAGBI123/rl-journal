@@ -882,3 +882,54 @@
   background: radial-gradient(800px 500px at 50% 0%, color-mix(in srgb, var(--blue) 18%, transparent), transparent 70%), var(--bg);
   font-family: var(--font-display);
 }
+
+/* ------------------------------------------------------------- 1.8: sort menu, games per account */
+
+[data-theme='aurora'] .sort-pop {
+  border-radius: 14px;
+  border-color: var(--glass-border-hover);
+  background: var(--glass-solid);
+  backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: var(--glass-shine), 0 24px 50px -20px rgba(0, 0, 0, 0.9);
+}
+
+[data-theme='aurora'] .acct-parts {
+  border-color: var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme='aurora'] table.table tr.m-group td {
+  border-bottom-color: rgba(255, 255, 255, 0.09);
+}
+
+[data-theme='aurora'] table.table tbody tr.m-group:hover td {
+  background: none;
+}
+
+/* ------------------------------------------------------------- 1.8: end-of-season recap */
+
+[data-theme='aurora'] .recap-hero .card {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme='aurora'] .recap-icon {
+  box-shadow: 0 0 18px -4px color-mix(in srgb, var(--warn) 70%, transparent);
+}
+
+[data-theme='aurora'] .recap-card {
+  border-radius: var(--radius);
+}
+
+[data-theme='aurora'] .recap-row .r-fill {
+  box-shadow: 0 0 10px -2px currentColor;
+}
+
+[data-theme='aurora'] .recap-facts .fact {
+  border-color: var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme='aurora'] .recap-facts button.fact:hover {
+  border-color: var(--glass-border-hover);
+}
