@@ -4,6 +4,7 @@ import { activityById, findDayRoutine, findSeason, fmtItemValue, itemKind, nextR
 import { plural } from './format';
 import { confirmDialog } from '../components/ui';
 import { replaceTimerQuestion } from '../components/TimerPill';
+import { isEnded } from '../../shared/timer';
 
 export interface RoutineItemRef {
   seasonId: string;
@@ -15,9 +16,10 @@ export interface RoutineItemRef {
 /**
  * Start the timer for a routine item: a countdown for what's left of a 'time' item, a stopwatch for a
  * 'stopwatch' item, and for an 'amount' item a count: the amount waits on the overlay with a done
- * button (no clock). `ask` confirms first if another timer is running.
+ * button (no clock). `ask` confirms first if another timer is running. `ready` sets it up without
+ * starting it (auto-next): it waits until the user starts it.
  */
-export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Promise<boolean> {
+export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true, ready = false): Promise<boolean> {
   const { data, timer, toast } = useStore.getState();
   const day = findSeason(data, ref.seasonId)?.days.find((d) => d.id === ref.dayId);
   const dr = day ? findDayRoutine(day, ref.dayRoutineId) : undefined;
@@ -29,7 +31,8 @@ export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Pr
     toast({ kind: 'error', title: 'This activity was deleted', body: 'Tick it off by hand or remove it from the routine.' });
     return false;
   }
-  if (ask && timer && !(timer.routine?.itemId === item.id)) {
+  // A finished timer waiting for done is logged when another one starts, so nothing to ask then.
+  if (ask && timer && !isEnded(timer) && !(timer.routine?.itemId === item.id)) {
     const ok = await confirmDialog({ ...replaceTimerQuestion(timer), confirmLabel: 'Start this one' });
     if (!ok) return false;
   }
@@ -47,6 +50,7 @@ export async function startRoutineItemTimer(ref: RoutineItemRef, ask = true): Pr
     note: item.note,
     mode: kind === 'stopwatch' ? 'up' : kind === 'amount' ? 'count' : 'down',
     ...(kind === 'amount' ? { amount: left || item.amount || 0 } : {}),
+    ...(ready ? { paused: true } : {}),
     routine: { dayRoutineId: dr.id, itemId: item.id },
   });
   return true;

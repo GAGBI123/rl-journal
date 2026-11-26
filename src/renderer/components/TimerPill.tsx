@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ListChecks, Pause, Play, Square, Timer, Watch, X } from 'lucide-react';
 import { useStore } from '../store';
-import { displayMs, earlyMinutes, elapsedMs, fmtClock, fmtCount, isCount, isCountUp, isRunning, type TimerState } from '../../shared/timer';
+import { displayMs, earlyMinutes, elapsedMs, fmtClock, fmtCount, fullMinutes, isCount, isCountUp, isEnded, isReady, isRunning, type TimerState } from '../../shared/timer';
 import { fmtMinutes } from '../lib/format';
 import { confirmDialog } from './ui';
 
@@ -31,13 +31,18 @@ export function replaceTimerQuestion(t: TimerState) {
 export function timerActions(timer: TimerState) {
   const up = isCountUp(timer);
   const count = isCount(timer);
+  const ended = isEnded(timer);
   const toast = useStore.getState().toast;
   const toggle = () => window.rlj.timerControl('toggle');
-  /** Stop now and log the time so far (an amount: tick it off). Returns true if it was stopped. */
+  /** Stop now and log the time so far (an amount: tick it off; a finished timer: log it). Returns true if it was stopped. */
   const finish = async () => {
-    if (count) {
+    if (count || ended) {
       await window.rlj.timerControl('finish');
       return true;
+    }
+    if (isReady(timer)) {
+      toast({ kind: 'info', title: 'Not started yet', body: 'Start it when you begin, or cancel it.' });
+      return false;
     }
     const doneSoFar = earlyMinutes(timer);
     if (!doneSoFar) {
@@ -60,6 +65,8 @@ export function timerActions(timer: TimerState) {
     const ok = await confirmDialog(
       count
         ? { title: `Take ${timer.activityName} off the overlay?`, body: 'Nothing is logged; it stays on the routine.', confirmLabel: 'Take it off' }
+        : ended
+        ? { title: 'Discard this finished timer?', body: `Its ${fmtMinutes(fullMinutes(timer))} of ${timer.activityName} isn’t logged.`, confirmLabel: 'Discard', danger: true }
         : {
             title: `Cancel this ${up ? 'stopwatch' : 'timer'}?`,
             body: 'Nothing is logged.',
@@ -90,43 +97,60 @@ export function TimerPill() {
 
   const running = isRunning(timer);
   const up = isCountUp(timer);
+  const ended = isEnded(timer);
+  const ready = isReady(timer);
   const shown = displayMs(timer);
   const pct = up ? 100 : Math.min(100, (elapsedMs(timer) / Math.max(1, timer.durationMs)) * 100);
   const doneSoFar = earlyMinutes(timer);
   const actions = timerActions(timer);
   const stopLabel = up ? 'Stop & log' : 'Finish now';
+  const look = ended ? 'ended' : ready ? 'ready' : running ? '' : 'paused';
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <div className={`timer-pill ${running ? '' : 'paused'}`} style={{ ['--t-color' as any]: timer.color ?? 'var(--blue)' }}>
+      <div className={`timer-pill ${look}`} style={{ ['--t-color' as any]: timer.color ?? 'var(--blue)' }}>
         <button className="tp-main" onClick={() => setOpen(!open)} title={timer.label}>
           {up ? <Watch size={14} /> : <Timer size={14} />}
-          <span className="tp-time">{fmtClock(shown)}</span>
-          <span className="tp-name">{timer.activityName}</span>
+          <span className="tp-time">{ended ? '0:00' : fmtClock(shown)}</span>
+          <span className="tp-name">
+            {ready && <span className="tp-tag">Ready</span>}
+            {ended && <span className="tp-tag">Done</span>}
+            {timer.activityName}
+          </span>
         </button>
-        <button className="tp-btn" onClick={actions.toggle} title={running ? 'Pause' : 'Resume'} aria-label={running ? 'Pause timer' : 'Resume timer'}>
-          {running ? <Pause size={13} /> : <Play size={13} />}
-        </button>
-        <button
-          className="tp-btn"
-          onClick={actions.finish}
-          title={doneSoFar ? `${stopLabel} (${fmtMinutes(doneSoFar)})` : `${stopLabel}: less than a minute so far`}
-          aria-label={stopLabel}
-        >
-          <Square size={11} fill="currentColor" />
-        </button>
+        {ended ? (
+          <button className="tp-btn" onClick={actions.finish} title={`Log it (${fmtMinutes(fullMinutes(timer))})`} aria-label="Log the finished timer">
+            <Check size={13} />
+          </button>
+        ) : (
+          <>
+            <button className="tp-btn" onClick={actions.toggle} title={ready ? 'Start' : running ? 'Pause' : 'Resume'} aria-label={ready ? 'Start timer' : running ? 'Pause timer' : 'Resume timer'}>
+              {running ? <Pause size={13} /> : <Play size={13} />}
+            </button>
+            {!ready && (
+              <button
+                className="tp-btn"
+                onClick={actions.finish}
+                title={doneSoFar ? `${stopLabel} (${fmtMinutes(doneSoFar)})` : `${stopLabel}: less than a minute so far`}
+                aria-label={stopLabel}
+              >
+                <Square size={11} fill="currentColor" />
+              </button>
+            )}
+          </>
+        )}
       </div>
       {open && (
         <div className="popover timer-pop">
           <div className="small muted">{timer.label}</div>
-          <div className="tp-big">{fmtClock(shown)}</div>
+          <div className="tp-big">{ended ? '0:00' : fmtClock(shown)}</div>
           {!up && (
             <div className="tp-bar">
               <div style={{ width: `${pct}%` }} />
             </div>
           )}
           <div className="small muted" style={{ marginTop: 6 }}>
-            {up ? 'Stopwatch, counting up' : `${fmtMinutes(timer.durationMs / 60000)} timer`} · {running ? 'running' : 'paused'} · logs to{' '}
+            {up ? 'Stopwatch, counting up' : `${fmtMinutes(timer.durationMs / 60000)} timer`} · {ended ? 'done, press Done to log it' : ready ? 'not started yet' : running ? 'running' : 'paused'} · logs to{' '}
             <button
               className="crumb-btn"
               onClick={() => {
@@ -210,6 +234,30 @@ function ClockButtons({ timer, onDone }: { timer: TimerState; onDone?: () => voi
   const up = isCountUp(timer);
   const doneSoFar = earlyMinutes(timer);
   const actions = timerActions(timer);
+  if (isEnded(timer)) {
+    return (
+      <div className="row wrap" style={{ marginTop: 12, gap: 8 }}>
+        <button className="btn small primary" onClick={async () => (await actions.finish()) && onDone?.()}>
+          <Check size={14} /> Done: log {fmtMinutes(fullMinutes(timer))}
+        </button>
+        <button className="btn small ghost" onClick={async () => (await actions.cancel()) && onDone?.()}>
+          <X size={14} /> Discard
+        </button>
+      </div>
+    );
+  }
+  if (isReady(timer)) {
+    return (
+      <div className="row wrap" style={{ marginTop: 12, gap: 8 }}>
+        <button className="btn small primary" onClick={actions.toggle}>
+          <Play size={14} /> Start
+        </button>
+        <button className="btn small ghost" onClick={async () => (await actions.cancel()) && onDone?.()}>
+          <X size={14} /> Cancel
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="row wrap" style={{ marginTop: 12, gap: 8 }}>
       <button className="btn small" onClick={actions.toggle}>
@@ -238,16 +286,25 @@ export function RunningTimerCard() {
   useTick(!!timer);
   if (!timer) return null;
   const count = isCount(timer);
+  const ended = isEnded(timer);
+  const ready = isReady(timer);
   const running = isRunning(timer) || count;
   const up = isCountUp(timer);
   const elsewhere = !(view.name === 'day' && view.dayId === timer.dayId);
+  const look = ended ? 'ended' : ready ? 'ready' : running ? '' : 'paused';
   return (
-    <div className={`card running-timer ${running ? '' : 'paused'}`} style={{ ['--t-color' as any]: timer.color ?? 'var(--blue)' }}>
+    <div className={`card running-timer ${look}`} style={{ ['--t-color' as any]: timer.color ?? 'var(--blue)' }}>
       <div className="row between" style={{ gap: 12, alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0 }}>
           <div className="small muted row" style={{ gap: 6 }}>
             {count ? <ListChecks size={13} /> : up ? <Watch size={13} /> : <Timer size={13} />}
-            {count ? 'On the overlay until you press done' : `${up ? 'Stopwatch' : 'Timer'} ${running ? 'running' : 'paused'}`}
+            {count
+              ? 'On the overlay until you press done'
+              : ended
+                ? 'Time’s up: press Done to log it'
+                : ready
+                  ? `Ready: press Start when you begin`
+                  : `${up ? 'Stopwatch' : 'Timer'} ${running ? 'running' : 'paused'}`}
             {elsewhere && (
               <>
                 {' · '}
@@ -259,7 +316,7 @@ export function RunningTimerCard() {
           </div>
           <div className="rt-name">{timer.label}</div>
         </div>
-        <div className="rt-time">{count ? fmtCount(timer.amount) : fmtClock(displayMs(timer))}</div>
+        <div className="rt-time">{count ? fmtCount(timer.amount) : ended ? '0:00' : fmtClock(displayMs(timer))}</div>
       </div>
       <TimerButtons timer={timer} />
     </div>

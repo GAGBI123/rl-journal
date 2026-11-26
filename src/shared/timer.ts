@@ -21,6 +21,8 @@ export interface TimerStart {
   mode?: 'down' | 'up' | 'count';
   /** With mode 'count': how many to do (shown on the overlay, e.g. 50×). */
   amount?: number;
+  /** Set up the timer without starting it (auto-next): it waits, "ready", until the user starts it. */
+  paused?: boolean;
   /** Set when the timer runs an item of a routine started on that day. */
   routine?: { dayRoutineId: string; itemId: string };
 }
@@ -32,6 +34,13 @@ export interface TimerState extends TimerStart {
   /** Time counted before the current run. */
   accumulatedMs: number;
   createdAt: number;
+  /** Not started yet (set up by auto-next): shown as "ready" until the user starts it. */
+  ready?: boolean;
+  /**
+   * When a countdown reached 0 (epoch ms). It then stays, at 0:00, until the user presses done to log
+   * it (or auto-next logs it and moves on).
+   */
+  endedAt?: number;
 }
 
 /** Sent to the app when a timer ends (or is finished early) so it can be logged. */
@@ -76,6 +85,16 @@ export function isRunning(t: TimerState) {
   return t.startedAt !== null;
 }
 
+/** Set up but not started yet (auto-next moved to it). */
+export function isReady(t: TimerState | null | undefined) {
+  return !!t?.ready;
+}
+
+/** A countdown that reached 0 and waits for done. */
+export function isEnded(t: TimerState | null | undefined) {
+  return !!t?.endedAt;
+}
+
 export function pauseTimer(t: TimerState, now = Date.now()): TimerState {
   if (t.startedAt === null) return t;
   return { ...t, accumulatedMs: elapsedMs(t, now), startedAt: null };
@@ -83,7 +102,13 @@ export function pauseTimer(t: TimerState, now = Date.now()): TimerState {
 
 export function resumeTimer(t: TimerState, now = Date.now()): TimerState {
   if (t.startedAt !== null) return t;
-  return { ...t, startedAt: now };
+  const { ready: _ready, ...rest } = t;
+  return { ...rest, startedAt: now };
+}
+
+/** Minutes a countdown logs when it ran to the end (its full length). */
+export function fullMinutes(t: TimerState) {
+  return Math.round((t.durationMs / 60000) * 100) / 100;
 }
 
 /** 5:07 · 12:30 · 1:02:03 */

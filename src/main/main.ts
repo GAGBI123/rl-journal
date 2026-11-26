@@ -9,7 +9,7 @@ import { integrateAppImage, onWayland, relaunchUnderXWayland, setLinuxAutostart 
 import { log } from './log';
 import { scheduleRelaunchAfterWindowsUpdate } from './relaunch';
 import type { LiveMatchResult, MainSettings } from '../shared/model';
-import { isCount, type TimerAction, type TimerCompletion, type TimerSource } from '../shared/timer';
+import { isCount, isEnded, isReady, type TimerAction, type TimerCompletion, type TimerSource } from '../shared/timer';
 import { TimerService } from './timer';
 import { OverlayManager } from './overlay';
 import { playlistInfo } from '../shared/playlists';
@@ -114,10 +114,12 @@ function registerKey(want: string, current: string, action: () => void): string 
   return '';
 }
 function syncHotkey() {
-  const active = !!timer.get() && !hotkeysSuspended;
-  // A count (amount on the overlay) can't be paused: only the done shortcut is taken.
-  registeredHotkey = registerKey(active && !isCount(timer.get()) ? timerHotkey : '', registeredHotkey, () => timerCommand('toggle', 'hotkey'));
-  const fin = active && (finishHotkey !== timerHotkey || isCount(timer.get())) ? finishHotkey : '';
+  const t = timer.get();
+  const active = !!t && !hotkeysSuspended;
+  // A count (amount on the overlay) or a finished countdown can't be paused: only the done shortcut is taken.
+  const pausable = active && !isCount(t) && !isEnded(t);
+  registeredHotkey = registerKey(pausable ? timerHotkey : '', registeredHotkey, () => timerCommand('toggle', 'hotkey'));
+  const fin = active && (finishHotkey !== timerHotkey || !pausable) ? finishHotkey : '';
   registeredFinish = registerKey(fin, registeredFinish, () => timerCommand('finish', 'hotkey'));
 }
 
@@ -169,7 +171,7 @@ const overlay = new OverlayManager({
   gameConnected: () => live.getStatus().state === 'connected',
   getTimer: () => timer.get(),
   hint: () =>
-    [registeredHotkey && `${keyLabel(registeredHotkey)}: pause`, registeredFinish && `${keyLabel(registeredFinish)}: done`].filter(Boolean).join(' · '),
+    [registeredHotkey && `${keyLabel(registeredHotkey)}: ${isReady(timer.get()) ? 'start' : 'pause'}`, registeredFinish && `${keyLabel(registeredFinish)}: done`].filter(Boolean).join(' · '),
 });
 
 const updater = new Updater({

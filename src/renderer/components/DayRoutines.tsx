@@ -24,7 +24,7 @@ import {
 import { fmtMinutes } from '../lib/format';
 import { afterRoutineAdded, startRoutineItemTimer } from '../lib/routineTimer';
 import { confirmDialog, Modal, NumberInput } from './ui';
-import { displayMs, fmtClock, isCount, isRunning } from '../../shared/timer';
+import { displayMs, fmtClock, isCount, isEnded, isReady, isRunning } from '../../shared/timer';
 import { useTick } from './TimerPill';
 import type { Day, DayRoutine, DayRoutineItem, Season } from '../../shared/model';
 import type { RoutineItemState } from '../lib/journal';
@@ -89,8 +89,8 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
   const ref = (itemId: string) => ({ seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId });
 
   const toggleItem = (itemId: string, done: boolean | undefined) => {
-    // An amount on the overlay: ticking it is the same as pressing done there (auto-next goes on from it).
-    if (runningHere?.routine?.itemId === itemId && isCount(runningHere) && !done) {
+    // An amount on the overlay or a finished timer: ticking it is the same as pressing done (auto-next goes on from it).
+    if (runningHere?.routine?.itemId === itemId && (isCount(runningHere) || isEnded(runningHere)) && !done) {
       void window.rlj.timerControl('finish');
       return;
     }
@@ -176,7 +176,11 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
           const st = stateOf(item.id);
           const isLogging = logging?.itemId === item.id && !st.done;
           return (
-            <div key={item.id} className={`routine-item ${st.done ? 'done' : ''} ${live ? 'live' : ''}`} style={{ ['--e-color' as any]: sec?.color }}>
+            <div
+              key={item.id}
+              className={`routine-item ${st.done ? 'done' : ''} ${live ? 'live' : ''} ${live && isReady(live) ? 'ready' : ''} ${live && isEnded(live) ? 'ended' : ''}`}
+              style={{ ['--e-color' as any]: sec?.color }}
+            >
               <button className={`check ${st.done ? 'on' : ''}`} onClick={() => toggleItem(item.id, st.done)} title={tickTitle(item, st)} aria-label={st.done ? 'Untick' : 'Tick off'}>
                 {st.done && <Check size={13} />}
               </button>
@@ -201,7 +205,16 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
                   </button>
                 </div>
               ) : (
-                <div className="ri-time">{live && !isCount(live) ? <span className="live-clock">{fmtClock(displayMs(live))}</span> : <ItemValue item={item} st={st} />}</div>
+                <div className="ri-time">
+                  {live && !isCount(live) ? (
+                    <span className="live-clock">
+                      {isReady(live) && <span className="ri-ready">Ready · </span>}
+                      {isEnded(live) ? '0:00' : fmtClock(displayMs(live))}
+                    </span>
+                  ) : (
+                    <ItemValue item={item} st={st} />
+                  )}
+                </div>
               )}
               {!st.done && kind === 'amount' && !live && !isLogging && (
                 <button
@@ -214,8 +227,16 @@ function DayRoutineCard({ season, day, dr }: { season: Season; day: Day; dr: Day
                 </button>
               )}
               {!st.done &&
-                (live && !isCount(live) ? (
-                  <button className="icon-btn" title={isRunning(live) ? 'Pause' : 'Resume'} onClick={() => window.rlj.timerControl('toggle')}>
+                (live && isEnded(live) ? (
+                  <button className="icon-btn on-toggle" title="Done: log it" aria-label="Log the finished timer" onClick={() => window.rlj.timerControl('finish')}>
+                    <Check size={15} />
+                  </button>
+                ) : live && !isCount(live) ? (
+                  <button
+                    className={`icon-btn ${isReady(live) ? 'on-toggle' : ''}`}
+                    title={isReady(live) ? 'Start' : isRunning(live) ? 'Pause' : 'Resume'}
+                    onClick={() => window.rlj.timerControl('toggle')}
+                  >
                     {isRunning(live) ? <Pause size={15} /> : <Play size={15} />}
                   </button>
                 ) : kind === 'amount' ? (

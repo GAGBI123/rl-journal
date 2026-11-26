@@ -47,6 +47,48 @@
         width: 22px;
         height: 22px;
       }
+      /* Auto-next moved here: not started yet. Dimmer, dashed, with the start button lit. */
+      .pill.ready {
+        border-style: dashed;
+        border-color: rgba(125, 170, 255, 0.6);
+        background: rgba(10, 15, 28, 0.74);
+      }
+      .pill.ready .time > #time {
+        opacity: 0.6;
+      }
+      .pill.ready #toggle {
+        background: rgba(96, 150, 255, 0.35);
+        border-color: rgba(125, 170, 255, 0.75);
+      }
+      .state.rd {
+        color: #9cc0ff;
+      }
+      /* A countdown that reached 0: flashes until done is pressed. */
+      .pill.ended {
+        animation: ended 1.1s ease-in-out infinite;
+      }
+      .pill.ended #done {
+        width: 46px;
+        height: 46px;
+        background: rgba(143, 208, 168, 0.3);
+        border-color: rgba(143, 208, 168, 0.7);
+      }
+      .pill.ended #done svg {
+        width: 22px;
+        height: 22px;
+      }
+      @keyframes ended {
+        0%,
+        100% {
+          border-color: rgba(143, 208, 168, 0.35);
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+        }
+        50% {
+          border-color: rgba(143, 208, 168, 0.95);
+          box-shadow: 0 0 0 3px rgba(143, 208, 168, 0.35), 0 6px 20px rgba(0, 0, 0, 0.35);
+          background: rgba(18, 40, 32, 0.9);
+        }
+      }
       .pill.paused {
         border-color: rgba(250, 178, 25, 0.5);
       }

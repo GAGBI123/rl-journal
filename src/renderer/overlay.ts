@@ -1,6 +1,7 @@
 // In-game timer overlay: shows the running timer and lets you pause / resume it. For an amount
-// (routine amount item) it shows how many to do and a done button.
-import { displayMs, elapsedMs, fmtClock, fmtCount, isCount, isCountUp, isRunning, type TimerState } from '../shared/timer';
+// (routine amount item) it shows how many to do and a done button. A timer auto-next moved to shows
+// as "ready" until it's started; a countdown that reached 0 flashes at 0:00 until done is pressed.
+import { displayMs, elapsedMs, fmtClock, fmtCount, isCount, isCountUp, isEnded, isReady, isRunning, type TimerState } from '../shared/timer';
 
 const $ = (id: string) => document.getElementById(id)!;
 const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -16,8 +17,12 @@ function render() {
   }
   pill.classList.remove('hidden');
   const count = isCount(timer);
+  const ended = isEnded(timer);
+  const ready = isReady(timer);
   pill.classList.toggle('count', count);
-  $('toggle').classList.toggle('hidden', count);
+  pill.classList.toggle('ended', ended);
+  pill.classList.toggle('ready', ready);
+  $('toggle').classList.toggle('hidden', count || ended);
   if (count) {
     pill.classList.remove('paused');
     pill.style.setProperty('--c', timer.color ?? '#3b82f6');
@@ -32,16 +37,32 @@ function render() {
     $('done').setAttribute('aria-label', 'Done: tick it off');
     return;
   }
+  if (ended) {
+    pill.classList.remove('paused');
+    pill.style.setProperty('--c', timer.color ?? '#3b82f6');
+    $('label').textContent = timer.label;
+    $('time').textContent = '0:00';
+    const state = $('state');
+    state.textContent = 'DONE · PRESS ✓ TO LOG';
+    state.classList.add('sw');
+    state.classList.remove('hidden');
+    ($('bar') as HTMLDivElement).style.width = '100%';
+    ($('bar') as HTMLDivElement).style.opacity = '1';
+    $('done').title = 'Log it';
+    $('done').setAttribute('aria-label', 'Log the finished timer');
+    return;
+  }
   const running = isRunning(timer);
-  pill.classList.toggle('paused', !running);
+  pill.classList.toggle('paused', !running && !ready);
   pill.style.setProperty('--c', timer.color ?? '#3b82f6');
   $('label').textContent = timer.label;
   const up = isCountUp(timer);
   $('time').textContent = fmtClock(displayMs(timer));
   // Paused shows PAUSED; a running stopwatch shows STOPWATCH so it's clear the time counts up.
   const state = $('state');
-  state.textContent = running ? 'STOPWATCH' : 'PAUSED';
+  state.textContent = ready ? 'READY · PRESS ▶' : running ? 'STOPWATCH' : 'PAUSED';
   state.classList.toggle('sw', running);
+  state.classList.toggle('rd', ready);
   state.classList.toggle('hidden', running && !up);
   const pct = up ? 100 : Math.min(100, (elapsedMs(timer) / Math.max(1, timer.durationMs)) * 100);
   ($('bar') as HTMLDivElement).style.width = `${pct}%`;
@@ -51,7 +72,7 @@ function render() {
   const btn = $('toggle');
   const icon = running ? PAUSE : PLAY;
   if (btn.innerHTML !== icon) btn.innerHTML = icon;
-  btn.title = running ? 'Pause' : 'Resume';
+  btn.title = ready ? 'Start' : running ? 'Pause' : 'Resume';
 }
 
 // React on press, not click: while the game has focus it can swallow the mouse release. Every event

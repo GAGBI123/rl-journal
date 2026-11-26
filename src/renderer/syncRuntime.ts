@@ -1,6 +1,6 @@
 // Wires the live game connection and app updates into the store.
 import type { AppNotification, LocalPlayer, MainSettings } from '../shared/model';
-import { fmtCount, isCount, type TimerCompletion } from '../shared/timer';
+import { fmtCount, fullMinutes, isCount, isEnded, type TimerCompletion, type TimerState } from '../shared/timer';
 import { applyLiveMatch } from './lib/sync';
 import {
   activityById,
@@ -14,8 +14,11 @@ import {
   fmtItemValue,
   nextRoutineItem,
   routineItemState,
+  routineItemStates,
   seasonLabel,
 } from './lib/journal';
+import { shortcutLabel } from './lib/shortcut';
+import type { AppData } from '../shared/model';
 import { startRoutineItemTimer, type RoutineItemRef } from './lib/routineTimer';
 import { fmtMinutes } from './lib/format';
 import { todayISO } from './lib/dates';
@@ -112,6 +115,9 @@ export function logTimer(c: TimerCompletion) {
   let routineDone = '';
   let alreadyDone = false;
   const count = isCount(c.timer);
+  // A countdown that ran to 0 already played the sound when it ended.
+  const ended = isEnded(c.timer);
+  const advancing = autoAdvancing.delete(c.timer.id);
   mutate((d) => {
     const t = c.timer;
     let season = findSeason(d, t.seasonId);
@@ -129,22 +135,28 @@ export function logTimer(c: TimerCompletion) {
     // completeRoutineItem logs the time (or, for a count, what's left of the amount) itself; if the
     // item is already done (e.g. logged meanwhile outside the routine), a timer's time is logged as a
     // plain entry instead. Never both.
-    if (dr && item && completeRoutineItem(day, dr.id, item.id, count ? undefined : c.minutes, t.note)) {
+    const completed = !!dr && !!item && completeRoutineItem(day, dr.id, item.id, count ? undefined : c.minutes, t.note);
+    if (!completed) {
+      // A count whose item was ticked off meanwhile (or removed) has nothing more to log.
+      if (count) alreadyDone = true;
+      else addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, note: t.note });
+    }
+    if (dr && item) {
       const n = nextRoutineItem(day, dr);
-      if (!n) routineDone = dr.name;
-      else if (dr.autoNext) {
+      if (!n) {
+        if (completed) routineDone = dr.name;
+      } else if (dr.autoNext) {
+        // Auto-next moves on to the next item and sets it up, not started: the user starts it when
+        // they begin. An amount goes on the overlay with a done button.
         const name = activityById(d, n.activityId)?.name ?? 'next item';
         const kind = itemKind(n);
         const left = routineItemState(day, n.id).remaining;
         next = { seasonId: season.id, dayId: day.id, dayRoutineId: dr.id, itemId: n.id };
-        // An amount goes on the overlay with a done button.
-        nextLabel = kind === 'amount' ? `${fmtItemValue(n, left)} ${name}, on the overlay: press ✓ when done` : kind === 'stopwatch' ? `${name} (stopwatch), started` : `${name} (${fmtMinutes(left)}), started`;
+        nextLabel =
+          kind === 'amount'
+            ? `${fmtItemValue(n, left)} ${name}, on the overlay: press ✓ when done`
+            : `${name} (${kind === 'stopwatch' ? 'stopwatch' : fmtMinutes(left)}) is ready: press ▶ to start`;
       }
-    } else if (count) {
-      // Its item was ticked off meanwhile (or removed): nothing more to log.
-      alreadyDone = true;
-    } else {
-      addToDay(day, { activityId: t.activityId, measure: 'time', minutes: c.minutes, note: t.note });
     }
     where = `${seasonLabel(season)}, Day ${dayNumber(season, day)}`;
     target = { seasonId: season.id, dayId: day.id };
@@ -168,15 +180,59 @@ export function logTimer(c: TimerCompletion) {
         ? 'Nothing more was logged.'
         : `Added to ${where}.`;
   toast({ kind: 'success', title, body, view: { name: 'day', seasonId: tgt.seasonId, dayId: tgt.dayId } });
-  if (data.settings.timerSound) playChime();
-  if (data.settings.systemNotifications) window.rlj.notify({ title, body });
+  if (data.settings.timerSound && !ended) playChime();
+  // Logging a finished timer by pressing done needs no notification (it came when the time ran out).
+  if (data.settings.systemNotifications && (!ended || advancing)) window.rlj.notify({ title, body });
   const nextRef = next as RoutineItemRef | null;
-  if (nextRef) void startRoutineItemTimer(nextRef, false);
+  if (nextRef) void startRoutineItemTimer(nextRef, false, true);
+}
+
+/** Finished timers that auto-next logs right away (so they get the usual notification). */
+const autoAdvancing = new Set<string>();
+/** Finished timers already handled (sound, auto-next), by id. */
+const endedSeen = new Set<string>();
+
+/**
+ * Does a finished routine timer move on by itself? Only with auto-next on and another item of the
+ * routine still to do; otherwise (no routine, the last item, auto-next off) it waits at 0:00 for done.
+ */
+export function advancesOnEnd(data: AppData, t: TimerState): boolean {
+  if (!t.routine) return false;
+  const day = findSeason(data, t.seasonId)?.days.find((x) => x.id === t.dayId);
+  const dr = day ? findDayRoutine(day, t.routine.dayRoutineId) : undefined;
+  if (!day || !dr?.autoNext) return false;
+  const states = routineItemStates(day);
+  return dr.items.some((i) => i.id !== t.routine!.itemId && !states.get(i.id)?.done);
+}
+
+/** A countdown reached 0: play the sound, then log it and move on (auto-next) or say it waits for done. */
+export function timerEnded(t: TimerState) {
+  if (endedSeen.has(t.id)) return;
+  endedSeen.add(t.id);
+  const { data, toast } = useStore.getState();
+  // It may have ended while the app was closed: no sound or notification for that.
+  const fresh = Date.now() - (t.endedAt ?? 0) < 60_000;
+  if (fresh && data.settings.timerSound) playChime();
+  if (advancesOnEnd(data, t)) {
+    autoAdvancing.add(t.id);
+    void window.rlj.timerControl('finish');
+    return;
+  }
+  const key = data.settings.timerFinishHotkey;
+  const title = `Time’s up: ${fmtMinutes(fullMinutes(t))} ${t.activityName}`;
+  const body = `Press ✓ on the overlay${key ? ` (or ${shortcutLabel(key)})` : ''} or Done in the app to log it.`;
+  toast({ kind: 'success', title, body, view: { name: 'day', seasonId: t.seasonId, dayId: t.dayId } });
+  if (fresh && data.settings.systemNotifications) window.rlj.notify({ title, body });
+}
+
+function onTimerState(t: TimerState | null) {
+  useStore.setState({ timer: t });
+  if (t && isEnded(t)) timerEnded(t);
 }
 
 function startTimers() {
-  window.rlj.timerGet().then((t) => useStore.setState({ timer: t }));
-  window.rlj.onTimerState((t) => useStore.setState({ timer: t }));
+  window.rlj.timerGet().then(onTimerState);
+  window.rlj.onTimerState(onTimerState);
   window.rlj.onTimerComplete((c) => logTimer(c));
   watchCountTimer();
 }

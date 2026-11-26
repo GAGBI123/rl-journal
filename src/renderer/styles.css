@@ -2066,6 +2066,48 @@ textarea.input.desc {
   background: color-mix(in srgb, var(--warn) 8%, transparent);
 }
 
+/* Auto-next moved to this timer: not started yet. */
+.timer-pill.ready,
+[data-theme='aurora'] .timer-pill.ready {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--blue) 60%, transparent);
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+}
+
+.timer-pill.ready .tp-time {
+  opacity: 0.6;
+}
+
+/* A countdown that reached 0: flashes until it's logged. */
+.timer-pill.ended,
+[data-theme='aurora'] .timer-pill.ended {
+  border-color: color-mix(in srgb, var(--good) 70%, transparent);
+  animation: timer-ended 1.1s ease-in-out infinite;
+}
+
+@keyframes timer-ended {
+  0%,
+  100% {
+    background: color-mix(in srgb, var(--good) 8%, transparent);
+  }
+  50% {
+    background: color-mix(in srgb, var(--good) 30%, transparent);
+  }
+}
+
+.timer-pill .tp-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-right: 5px;
+  color: var(--blue);
+}
+
+.timer-pill.ended .tp-tag {
+  color: var(--good);
+}
+
 .timer-pill .tp-main {
   display: inline-flex;
   align-items: center;
@@ -2256,6 +2298,34 @@ textarea.input.desc {
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
 }
 
+.running-timer.ready,
+[data-theme='aurora'] .running-timer.ready {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+.running-timer.ready .rt-time {
+  opacity: 0.55;
+}
+
+.running-timer.ended,
+[data-theme='aurora'] .running-timer.ended {
+  border-color: color-mix(in srgb, var(--good) 70%, transparent);
+  animation: timer-ended-card 1.1s ease-in-out infinite;
+}
+
+@keyframes timer-ended-card {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 35%, transparent);
+  }
+}
+
 .running-timer .rt-name {
   font-weight: 600;
   margin-top: 3px;
@@ -2355,6 +2425,29 @@ textarea.input.desc {
 .routine-item .live-clock {
   color: var(--text);
   font-weight: 700;
+}
+
+/* The item auto-next moved to: set up, not started yet. */
+.routine-item.live.ready,
+[data-theme='aurora'] .routine-item.live.ready {
+  background: var(--panel-2);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 55%, transparent) inset;
+  outline: 1px dashed color-mix(in srgb, var(--blue) 55%, transparent);
+  outline-offset: -1px;
+}
+
+.routine-item.live.ready .live-clock {
+  color: var(--muted);
+}
+
+.routine-item .ri-ready {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.routine-item.live.ended,
+[data-theme='aurora'] .routine-item.live.ended {
+  animation: timer-ended 1.1s ease-in-out infinite;
 }
 
 .routine-pick {

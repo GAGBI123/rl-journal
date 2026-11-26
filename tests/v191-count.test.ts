@@ -1,4 +1,5 @@
-// 1.9.1: routine amount items on the overlay ("count" timers) with a done button.
+// 1.9.1: routine amount items on the overlay ("count" timers) with a done button; auto-next sets the
+// next item up without starting it; finished countdowns wait at 0:00 for done.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,10 +29,59 @@ vi.mock('../src/renderer/store', () => ({ useStore: store.useStore, flushSave: (
 import { TimerService } from '../src/main/timer';
 import { fmtCount, isCount } from '../src/shared/timer';
 import { completeRoutineItem, createDefaultData, createRoutine, createSeason, routineItemState, startRoutineOnDay } from '../src/renderer/lib/journal';
-import { logTimer, watchCountTimer } from '../src/renderer/syncRuntime';
+import { advancesOnEnd, logTimer, timerEnded, watchCountTimer } from '../src/renderer/syncRuntime';
 import { startRoutineItemTimer } from '../src/renderer/lib/routineTimer';
 
 const BASE: TimerStart = { activityId: 'act-freeplay', label: 'Shots', activityName: 'Shots', seasonId: 's', dayId: 'd', date: '2026-11-25', durationMs: 0 };
+
+describe('ready and finished timers in the timer service', () => {
+  it('keeps a countdown at 0:00 until done, then logs its full length', () => {
+    vi.useFakeTimers();
+    const done: TimerCompletion[] = [];
+    const svc = new TimerService({ onState: () => undefined, onComplete: (c) => done.push(c) });
+    const t = svc.start({ ...BASE, durationMs: 120_000 });
+    vi.advanceTimersByTime(125_000);
+    expect(done).toHaveLength(0);
+    const ended = svc.get()!;
+    expect(ended.endedAt).toBe(t.startedAt! + 120_000);
+    expect(ended).toMatchObject({ startedAt: null, accumulatedMs: 120_000 });
+    expect(svc.control('toggle', 'hotkey')).toBe(ended); // nothing to pause
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(done).toHaveLength(0);
+    svc.control('finish', 'overlay');
+    expect(svc.get()).toBeNull();
+    expect(done).toEqual([{ timer: ended, minutes: 2, early: false }]);
+    vi.useRealTimers();
+  });
+
+  it('logs a finished timer first when another one starts', () => {
+    vi.useFakeTimers();
+    const done: TimerCompletion[] = [];
+    const svc = new TimerService({ onState: () => undefined, onComplete: (c) => done.push(c) });
+    svc.start({ ...BASE, durationMs: 60_000 });
+    vi.advanceTimersByTime(61_000);
+    const next = svc.start({ ...BASE, label: 'Next', durationMs: 60_000 });
+    expect(done.map((c) => [c.minutes, c.early])).toEqual([[1, false]]);
+    expect(svc.get()).toBe(next);
+    vi.useRealTimers();
+  });
+
+  it('sets a timer up without starting it, until it is started', () => {
+    vi.useFakeTimers();
+    const svc = new TimerService({ onState: () => undefined, onComplete: () => undefined });
+    const t = svc.start({ ...BASE, durationMs: 60_000, paused: true });
+    expect(t).toMatchObject({ ready: true, startedAt: null, accumulatedMs: 0 });
+    expect('paused' in t).toBe(false);
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(svc.get()!.endedAt).toBeUndefined();
+    const started = svc.control('toggle', 'hotkey')!;
+    expect(started.ready).toBeUndefined();
+    expect(started.startedAt).not.toBeNull();
+    // A count can't be "ready": it waits for done anyway.
+    expect(svc.start({ ...BASE, mode: 'count', amount: 5, paused: true }).ready).toBeUndefined();
+    vi.useRealTimers();
+  });
+});
 
 describe('count timers in the timer service', () => {
   it('never ends by itself, ignores pause and ticks off on done', () => {
@@ -146,7 +196,55 @@ describe('amount items through the overlay', () => {
     expect(routineItemState(today(), dr.items[1].id)).toMatchObject({ done: true, progress: 50 });
     expect(today().entries.find((e: any) => e.activityId === 'act-shots')).toMatchObject({ measure: 'amount', amount: 50 });
     expect(toasts.at(-1).title).toBe('Done: 50× Air roll shots logged');
-    expect(started.at(-1)).toMatchObject({ mode: 'up', routine: { itemId: dr.items[2].id } });
+    // Auto-next sets the stopwatch up without starting it.
+    expect(started.at(-1)).toMatchObject({ mode: 'up', paused: true, routine: { itemId: dr.items[2].id } });
+    expect(toasts.at(-1).body).toContain('is ready: press ▶ to start');
+  });
+
+  it('moves to the next timer ready (not started) when a timer ends with auto-next', async () => {
+    const { ref, dr } = setup();
+    // Make item 2 a timer too.
+    store.s.state.mutate((d: AppData) => {
+      const x = d.seasons[0].days.find((y) => y.id === ref.dayId)!.routines![0].items[1];
+      x.kind = 'time';
+      x.minutes = 15;
+      delete x.amount;
+    });
+    const first = timerFor({ ...BASE, ...ref, activityId: 'act-freeplay', mode: 'down', durationMs: 600_000, routine: { dayRoutineId: dr.id, itemId: dr.items[0].id } });
+    const ended = { ...first, startedAt: null, accumulatedMs: 600_000, endedAt: Date.now() };
+    expect(advancesOnEnd(store.s.state.data, ended)).toBe(true);
+    // It ended: auto-next logs it right away (done), which then sets the next one up.
+    timerEnded(ended);
+    timerEnded(ended); // a second state update for the same timer changes nothing
+    expect(controls).toEqual(['finish']);
+    logTimer({ timer: ended, minutes: 10, early: false });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(started.at(-1)).toMatchObject({ mode: 'down', paused: true, durationMs: 15 * 60_000, routine: { itemId: dr.items[1].id } });
+  });
+
+  it('waits at 0:00 for done when nothing comes next (last item, auto-next off, no routine)', () => {
+    const { ref, dr } = setup();
+    const t = (itemId?: string) =>
+      ({ ...timerFor({ ...BASE, ...ref, mode: 'down', durationMs: 60_000, ...(itemId ? { routine: { dayRoutineId: dr.id, itemId } } : {}) }), startedAt: null, accumulatedMs: 60_000, endedAt: Date.now() }) as TimerState;
+    expect(advancesOnEnd(store.s.state.data, t())).toBe(false);
+    // The last item still to do (the others ticked off).
+    store.s.state.mutate((d: AppData) => {
+      const items = d.seasons[0].days.find((y) => y.id === ref.dayId)!.routines![0].items;
+      items[0].done = true;
+      items[0].loggedMinutes = 10;
+      items[1].done = true;
+      items[1].loggedAmount = 50;
+    });
+    expect(advancesOnEnd(store.s.state.data, t(dr.items[2].id))).toBe(false);
+    expect(advancesOnEnd(store.s.state.data, t(dr.items[0].id))).toBe(true);
+    store.s.state.mutate((d: AppData) => void (d.seasons[0].days.find((y) => y.id === ref.dayId)!.routines![0].autoNext = false));
+    expect(advancesOnEnd(store.s.state.data, t(dr.items[0].id))).toBe(false);
+    // It stays: no done pressed for the user, a "time's up" message instead.
+    const last = t(dr.items[2].id);
+    timerEnded(last);
+    expect(controls).toEqual([]);
+    expect(toasts.at(-1).title).toBe('Time’s up: 1m Shots');
+    expect(toasts.at(-1).body).toContain('to log it');
   });
 
   it('only ticks it off without auto-next, and never logs a count twice', async () => {

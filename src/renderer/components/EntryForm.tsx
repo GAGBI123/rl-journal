@@ -21,7 +21,7 @@ import { compareEntry } from '../lib/compare';
 import { fmtMinutes, fmtNum } from '../lib/format';
 import type { Day, Entry, Measure, Season } from '../../shared/model';
 import { shortcutLabel } from '../lib/shortcut';
-import { isCount } from '../../shared/timer';
+import { isCount, isEnded } from '../../shared/timer';
 import { replaceTimerQuestion, timerNoun } from './TimerPill';
 
 let lastSectionId: string | null = null;
@@ -213,7 +213,8 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
   const startTimer = async (mode: 'down' | 'up') => {
     if (!section || measure !== 'time' || !hasActivity) return;
     if (mode === 'down' && !valid) return;
-    if (activeTimer) {
+    // A finished timer waiting for done is logged first when a new one starts: nothing to ask then.
+    if (activeTimer && !isEnded(activeTimer)) {
       const ok = await confirmDialog({ ...replaceTimerQuestion(activeTimer), confirmLabel: 'Start new timer' });
       if (!ok) return;
     }
@@ -509,7 +510,9 @@ export function EntryForm(props: { season: Season; day: Day; editing?: Entry; on
       )}
       {canTime && activeTimer && (
         <div className="tiny muted">
-          {isCount(activeTimer)
+          {isEnded(activeTimer)
+            ? `The ${activeTimer.activityName} timer finished. Starting a new one logs it first.`
+            : isCount(activeTimer)
             ? `${activeTimer.activityName} is on the overlay. Starting a timer takes it off.`
             : `A ${timerNoun(activeTimer)} is running for ${activeTimer.activityName}. Starting a new one replaces it.`}
         </div>
