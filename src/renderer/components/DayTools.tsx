@@ -56,7 +56,7 @@ export function reopenEndedDay() {
   if (ok) toast({ kind: 'info', title: 'Day reopened', body: 'Games are logged to it again until you end it.' });
 }
 
-const resultLabel = (m: MatchRecord) => (m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Left early' : 'Loss') : 'Unknown');
+const resultLabel = (m: MatchRecord) => (m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Forfeit' : 'Loss') : 'Unknown');
 const toInt = (v: string) => (v.trim() === '' ? 0 : Math.floor(Number(v)));
 
 /** Move an entry, or part of it (some of its sessions, or one), to another day. */

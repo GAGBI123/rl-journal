@@ -3224,29 +3224,6 @@ textarea.input.desc {
   white-space: nowrap;
 }
 
-table.table td.m-actions {
-  width: 1%;
-  padding-top: 2px;
-  padding-bottom: 2px;
-  text-align: right;
-}
-
-table.table td.m-actions .icon-btn {
-  opacity: 0.4;
-  width: 28px;
-  height: 28px;
-}
-
-table.table tr:hover td.m-actions .icon-btn,
-table.table td.m-actions .icon-btn:focus-visible {
-  opacity: 1;
-}
-
-table.table td.m-actions .icon-btn:hover {
-  color: var(--bad);
-  background: color-mix(in srgb, var(--bad) 12%, transparent);
-}
-
 .badge.suspect {
   height: 19px;
   font-size: 10.5px;
@@ -3804,7 +3781,7 @@ button.badge.open-badge:hover {
 }
 
 .ed-time {
-  min-width: 62px;
+  min-width: 66px;
   color: var(--muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;

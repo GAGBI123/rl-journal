@@ -195,7 +195,7 @@ export function applyLiveMatch(data: AppData, result: LiveMatchResult): SyncOutc
 
   const score = teamScore !== undefined && opponentScore !== undefined ? ` ${teamScore}–${opponentScore}` : '';
   const res =
-    outcome === 'win' ? `Win${score}` : outcome === 'loss' ? (result.leftEarly ? 'Left early (loss)' : `Loss${score}`) : score ? `Score${score}` : 'Game';
+    outcome === 'win' ? `Win${score}` : outcome === 'loss' ? (result.leftEarly ? 'Forfeit (loss)' : `Loss${score}`) : score ? `Score${score}` : 'Game';
   const who = account ? ` · ${account.label}` : '';
   const open = date < played ? ' (the day is still open)' : date > played ? ' (next day: today was ended)' : '';
   const n = notify(data, {

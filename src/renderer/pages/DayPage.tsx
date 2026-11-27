@@ -172,7 +172,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
   // Games from 2+ accounts: each game gets its account's colored dot, with a legend above the table.
   const dayAccounts = sortMatches(data, matchesToday, 'account');
   const multiAccount = dayAccounts.length > 1;
-  const matchCols = 5 + (showRecord ? 1 : 0);
+  const matchCols = 4 + (showRecord ? 1 : 0);
 
   return (
     <div className="page">
@@ -498,7 +498,6 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                         <th title="Your in-game points">Points</th>
                         <th title="Goals / assists / saves / shots">G/A/S/Sh</th>
                         <th>Time</th>
-                        <th aria-label="Actions" />
                       </tr>
                     </thead>
                     <tbody>
@@ -538,7 +537,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                                     </span>
                                   )}
                                   {looksNotStarted(m) && (
-                                    <span className="badge suspect" title="No touches, points or goals: this match probably never started (e.g. it was cancelled). Delete it if it wasn't a real game.">
+                                    <span className="badge suspect" title="No touches, points or goals: this match probably never started (e.g. it was cancelled). If it wasn't a real game, open its games in the Games section above and delete it there.">
                                       Didn't start?
                                     </span>
                                   )}
@@ -554,7 +553,7 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                                           <Trophy size={13} /> Win
                                         </>
                                       ) : m.result === 'loss' ? (
-                                        m.leftEarly ? 'Left early' : 'Loss'
+                                        m.leftEarly ? 'Forfeit' : 'Loss'
                                       ) : (
                                         'Unknown'
                                       )}
@@ -570,11 +569,6 @@ export function DayPage({ seasonId, dayId }: { seasonId: string; dayId: string }
                                 <td>{m.me ? fmtNum(m.me.score) : '—'}</td>
                                 <td>{m.me ? `${m.me.goals}/${m.me.assists}/${m.me.saves}/${m.me.shots}` : '—'}</td>
                                 <td className="muted">{new Date(m.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</td>
-                                <td className="m-actions">
-                                  <button className="icon-btn" title="Delete this game (not yours, cancelled, …)" aria-label="Delete this game" onClick={() => removeMatch(m)}>
-                                    <Trash2 size={14} />
-                                  </button>
-                                </td>
                               </tr>
                             );
                           }),

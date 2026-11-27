@@ -413,7 +413,7 @@ function RecentMatches() {
                   </td>
                   <td>{act?.name ?? m.mode}</td>
                   <td className={m.result === 'win' ? 'up' : m.result === 'loss' ? 'down' : 'muted'}>
-                    {m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Left early' : 'Loss') : '—'}
+                    {m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Forfeit' : 'Loss') : '—'}
                   </td>
                   <td>{m.teamScore !== undefined ? `${m.teamScore} – ${m.opponentScore ?? 0}` : '—'}</td>
                   <td>{a?.label ?? <span className="muted">Not matched</span>}</td>

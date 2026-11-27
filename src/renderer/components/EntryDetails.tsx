@@ -22,13 +22,10 @@ const SOURCES: Record<SessionSource, { label: string; icon: typeof Timer }> = {
   hand: { label: 'Added', icon: Hand },
 };
 
-/** "8:05 PM", with the date in front when it isn't the day's own date (e.g. moved from another day). */
-function when(iso: string, dayDate: string) {
+/** "8:05 PM": the time only (never the date, also for games played after midnight on an open day). */
+function when(iso: string) {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return local === dayDate ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 /** A note under a game or session: click to write or change it; Enter saves, Esc cancels. */
@@ -87,7 +84,6 @@ function NoteLine(props: { note?: string; editing: boolean; setEditing: (v: bool
 function GameRow(props: {
   m: MatchRecord;
   n: number;
-  day: Day;
   account?: Account;
   showAccount: boolean;
   showRecord: boolean;
@@ -98,13 +94,13 @@ function GameRow(props: {
   const mutate = useStore((s) => s.mutate);
   const [noting, setNoting] = useState(false);
   const counts = matchInRecord(data, m);
-  const result = m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Left early' : 'Loss') : 'Unknown';
+  const result = m.result === 'win' ? 'Win' : m.result === 'loss' ? (m.leftEarly ? 'Forfeit' : 'Loss') : 'Unknown';
   const score = m.teamScore !== undefined ? `${m.teamScore}–${m.opponentScore ?? 0}${m.overtime ? ' OT' : ''}` : '';
   return (
     <div className="ed-row">
       <div className="ed-line">
         <span className="ed-n">#{props.n}</span>
-        <span className="ed-time">{when(m.at, props.day.date)}</span>
+        <span className="ed-time">{when(m.at)}</span>
         {props.showAccount && (
           <span className="acct-dot" style={props.account ? { ['--acct' as any]: props.account.color } : undefined} title={props.account?.label ?? 'Unknown account'} />
         )}
@@ -199,7 +195,7 @@ function SessionRow(props: {
     <div className="ed-row">
       <div className="ed-line">
         <span className="ed-n">#{props.n}</span>
-        <span className="ed-time">{when(s.at, props.day.date)}</span>
+        <span className="ed-time">{when(s.at)}</span>
         <span className="ed-src" title={src.label === 'Added' ? 'Added by hand' : `From a ${src.label.toLowerCase()}`}>
           <Icon size={12} /> {src.label}
         </span>
@@ -294,7 +290,6 @@ export function EntryDetails(props: {
           key={m.id}
           m={m}
           n={i + 1}
-          day={day}
           account={accountOf(m.accountId)}
           showAccount={multiAccount}
           showRecord={props.showRecord}
