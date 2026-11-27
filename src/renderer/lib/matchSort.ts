@@ -99,7 +99,8 @@ export function sortMatches(data: AppData, list: MatchRecord[], sort: MatchSort)
 // ---------------------------------------------------------------- game entries
 
 export const ENTRY_SORTS: { value: EntrySort; label: string; hint: string; record?: boolean }[] = [
-  { value: 'logged', label: 'Order logged', hint: 'As they were added to the day' },
+  // 'logged' (the saved value since 1.9.1) = most recent first since 1.10.2.
+  { value: 'logged', label: 'Most recent', hint: 'The mode you played last at the top' },
   { value: 'mode', label: 'Game mode', hint: 'Like the tracked matches: ranked 1s, 2s, 3s, then casual, Honor Duels, private matches, then your own modes' },
   { value: 'account', label: 'Account', hint: 'Each account’s games together, merged and hand-added ones last' },
   { value: 'games', label: 'Most games', hint: 'The modes you played most first' },
@@ -113,7 +114,12 @@ export const ENTRY_SORT_VALUES = ENTRY_SORTS.map((o) => o.value);
  * same mode on different accounts next to each other (in account order).
  */
 export function sortEntries(data: AppData, entries: Entry[], sort: EntrySort): Entry[] {
-  if (sort === 'logged' || !ENTRY_SORT_VALUES.includes(sort)) return [...entries];
+  if (!ENTRY_SORT_VALUES.includes(sort)) sort = 'logged';
+  // When an entry was last added to: its latest game or session (when it was created, for older entries).
+  const lastAt = (e: Entry): number => {
+    const times = [...data.matches.filter((m) => m.entryId === e.id).map((m) => m.at), ...(e.sessions ?? []).map((s) => s.at)].map((t) => Date.parse(t) || 0);
+    return times.length ? Math.max(...times) : Date.parse(e.createdAt) || 0;
+  };
   const accIdx = new Map(data.accounts.map((a, i) => [a.id, i]));
   // An entry's account: its own, the one account its tracked games came from, merged (several) or by hand.
   const accountRank = (e: Entry): number => {
@@ -134,9 +140,11 @@ export function sortEntries(data: AppData, entries: Entry[], sort: EntrySort): E
     // Private matches left out of the record (Settings → Games & logging) don't count as wins here either.
     wins: inRecord(data, e.activityId) ? e.wins ?? 0 : 0,
     losses: e.losses ?? 0,
+    last: sort === 'logged' ? lastAt(e) : 0,
   }));
   type Row = (typeof rows)[number];
-  const by: Record<Exclude<EntrySort, 'logged'>, (a: Row, b: Row) => number> = {
+  const by: Record<EntrySort, (a: Row, b: Row) => number> = {
+    logged: (a, b) => b.last - a.last || b.i - a.i,
     mode: (a, b) => a.mode - b.mode || a.account - b.account,
     account: (a, b) => a.account - b.account || a.mode - b.mode,
     games: (a, b) => b.games - a.games || a.mode - b.mode,

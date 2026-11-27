@@ -1,7 +1,7 @@
 {
   "name": "rl-journal",
   "productName": "RL Journal",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "description": "Rocket League training & games journal with season tracking, statistics and automatic game logging.",
   "author": "RL Journal",
   "license": "MIT",

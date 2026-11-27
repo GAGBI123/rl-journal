@@ -262,6 +262,12 @@ export function EntryDetails(props: {
   const counts = inRecord(data, entry.activityId);
   const multiAccount = new Set(matches.map((m) => m.accountId ?? '')).size > 1;
   // Games added by hand before 1.10 (or to a game entry without a session list): only a count.
+  // Games and sessions numbered in the order they were played (#1 = first), the latest at the top.
+  const rows = [...matches.map((m) => ({ m, s: undefined, at: m.at })), ...sessions.map((s) => ({ m: undefined, s, at: s.at }))]
+    .map((r, i) => ({ ...r, t: Date.parse(r.at) || 0, i }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .map((r, i) => ({ ...r, n: i + 1 }))
+    .reverse();
   const handLeft =
     entry.measure === 'amount' && entry.auto ? Math.max(0, (entry.amount ?? 0) - matches.length - sessions.reduce((a, s) => a + s.value, 0)) : 0;
 
@@ -285,30 +291,31 @@ export function EntryDetails(props: {
           })}
         </div>
       )}
-      {matches.map((m, i) => (
-        <GameRow
-          key={m.id}
-          m={m}
-          n={i + 1}
-          account={accountOf(m.accountId)}
-          showAccount={multiAccount}
-          showRecord={props.showRecord}
-          onDelete={props.onDeleteMatch}
-        />
-      ))}
-      {sessions.map((s, i) => (
-        <SessionRow
-          key={s.id}
-          s={s}
-          n={matches.length + i + 1}
-          season={props.season}
-          day={day}
-          entry={entry}
-          games={props.games}
-          canMove={sessions.length > 1 || matches.length > 0}
-          onMove={props.onMoveSession}
-        />
-      ))}
+      {rows.map(({ m, s, n }) =>
+        m ? (
+          <GameRow
+            key={m.id}
+            m={m}
+            n={n}
+            account={accountOf(m.accountId)}
+            showAccount={multiAccount}
+            showRecord={props.showRecord}
+            onDelete={props.onDeleteMatch}
+          />
+        ) : (
+          <SessionRow
+            key={s!.id}
+            s={s!}
+            n={n}
+            season={props.season}
+            day={day}
+            entry={entry}
+            games={props.games}
+            canMove={sessions.length > 1 || matches.length > 0}
+            onMove={props.onMoveSession}
+          />
+        ),
+      )}
       {handLeft > 0 && (
         <div className="ed-row">
           <div className="ed-line">

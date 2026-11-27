@@ -291,7 +291,7 @@ export type TimeFormat = 'days' | 'hours';
 /** Orders for the tracked matches on the day page (newest first within each group). */
 export type MatchSort = 'recent' | 'oldest' | 'mode' | 'account' | 'result' | 'points';
 
-/** Orders for the entries of a games section on the day page (ties keep the order they were logged in). */
+/** Orders for the entries of a games section on the day page ('logged' = most recent first; ties keep the order they were logged in). */
 export type EntrySort = 'logged' | 'mode' | 'account' | 'games' | 'wins';
 
 /** Colors the user can change in Settings → Appearance. */

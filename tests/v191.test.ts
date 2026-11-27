@@ -62,11 +62,15 @@ describe('sorting the games section', () => {
     return { data, day: today() };
   }
 
-  it('keeps the logged order by default', () => {
+  it('puts the mode played last at the top by default (1.10.2)', () => {
     const { data, day: d } = day();
     expect(data.settings.dayGamesSort).toBe('logged');
-    expect(sortEntries(data, d.entries, 'logged')).toEqual(d.entries);
+    // The hand-added KBM games are the newest, then the last game played (ranked 1s on Main), and so on.
+    expect(names(data, d, 'logged')).toEqual(['KBM matches', 'Ranked 1s (Main)', 'Ranked 2s (Main)', 'Ranked 1s (Alt)', 'Ranked 3s (Main)', 'Honor Duel (Main)', 'Casual 2s (Main)']);
     expect(sortEntries(data, d.entries, 'logged')).not.toBe(d.entries);
+    // A game played later moves its mode up (under the KBM games, added by hand just now).
+    applyLiveMatch(data, game(MAIN, 13));
+    expect(names(data, d, 'logged').slice(0, 3)).toEqual(['KBM matches', 'Ranked 3s (Main)', 'Ranked 1s (Main)']);
   });
 
   it('sorts by game mode in the same order as the tracked matches', () => {
